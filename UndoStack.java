@@ -1,46 +1,58 @@
-import java.util.Objects;
 import java.util.Stack;
 
-// The undo history, stored as a STACK (LIFO: Last In, First Out). The last transaction recorded
-// is the first one undone, no matter what dates the transactions have.
-// Demonstrates ENCAPSULATION and ABSTRACTION: the java.util.Stack is hidden behind five methods.
+/**
+ * The undo stack.
+ *
+ * STACK = LIFO (Last In, First Out): like a pile of plates, the last
+ * transaction put on top is the first one taken off. That is exactly how
+ * "undo" works: it always reverses the MOST RECENT transaction first.
+ *
+ *     push(sale)     ->  [sale]
+ *     push(utang)    ->  [sale, utang]
+ *     push(payment)  ->  [sale, utang, payment]   <- top
+ *     pop()          ->  payment is undone first, then utang, then sale
+ *
+ * OOP - ENCAPSULATION: the java.util.Stack is private. Other classes can
+ * only use push/pop/peek/isEmpty/size, so nobody can remove a transaction
+ * from the middle of the stack.
+ */
 public class UndoStack {
-    private final Stack<Transaction> stack = new Stack<>();
 
-    // Puts a successfully saved transaction on top of the stack.
+    private final Stack<Transaction> stack = new Stack<Transaction>();
+
+    /**
+     * Puts a transaction on top. Only recorded, active transactions are allowed.
+     *
+     * @throws IllegalArgumentException for null, unrecorded or undone transactions
+     */
     public void push(Transaction transaction) {
-        Objects.requireNonNull(transaction, "transaction");
-        if (!transaction.isExecuted() || transaction.isUndone()) {
-            throw new IllegalArgumentException("Only saved, active transactions can be pushed.");
+        if (transaction == null || !transaction.isActive()) {
+            throw new IllegalArgumentException("Only successfully recorded transactions can be added to the undo stack.");
         }
         stack.push(transaction);
     }
 
-    // Returns the top transaction without removing it.
-    public Transaction peek() throws UndoException {
-        requireNotEmpty();
-        return stack.peek();
-    }
-
-    // Removes and returns the top transaction.
-    public Transaction pop() throws UndoException {
-        requireNotEmpty();
+    /** Removes and returns the top transaction, or null if the stack is empty. */
+    public Transaction pop() {
+        if (stack.isEmpty()) {
+            return null;
+        }
         return stack.pop();
     }
 
-    // Returns true if there is nothing to undo.
+    /** Returns the top transaction WITHOUT removing it, or null if the stack is empty. */
+    public Transaction peek() {
+        if (stack.isEmpty()) {
+            return null;
+        }
+        return stack.peek();
+    }
+
     public boolean isEmpty() {
         return stack.isEmpty();
     }
 
-    // Returns how many transactions can still be undone.
     public int size() {
         return stack.size();
-    }
-
-    private void requireNotEmpty() throws UndoException {
-        if (stack.isEmpty()) {
-            throw new UndoException("Nothing to undo. There are no saved transactions left on the undo stack.");
-        }
     }
 }

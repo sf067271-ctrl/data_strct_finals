@@ -3,82 +3,108 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-// All customers, kept sorted A-Z, plus queries over their utang records.
-// Demonstrates INHERITANCE (extends NamedRecordList<Customer>) and ABSTRACTION (Main never sees the list).
-public class CustomerRecords extends NamedRecordList<Customer> {
-    private static final Comparator<Customer> BY_BALANCE_HIGH_TO_LOW =
-            (first, second) -> second.getBalance().compareTo(first.getBalance());
+/**
+ * Stores and manages all utang customers.
+ *
+ * Like Inventory, the master list is kept in ALPHABETICAL order by name so
+ * exact names can be found with binary search.
+ *
+ * OOP - ENCAPSULATION: the ArrayList is private; other classes get copies.
+ */
+public class CustomerRecords {
 
-    public CustomerRecords() {
-        super("customer");
-    }
-
-    // Validates the name and adds a new customer right away (used for sample data).
-    public Customer addCustomer(String rawName) throws ValidationException, DuplicateRecordException {
-        Customer customer = createCustomer(rawName);
-        addRecord(customer);
-        return customer;
-    }
-
-    // Validates the name and creates a customer WITHOUT adding it. The customer is added later,
-    // by UtangTransaction, only when the first utang is saved.
-    public Customer createCustomer(String rawName) throws ValidationException, DuplicateRecordException {
-        String name = Validator.validateCustomerName(rawName);
-        checkNameAvailable(name);
-        return new Customer(name);
-    }
-
-    // Returns true if this exact customer object is already in the list.
-    public boolean isRegistered(Customer customer) {
-        return findByName(customer.getName()) == customer;
-    }
-
-    // Returns customers who still owe money, highest balance first (a sorted copy).
-    public List<Customer> getCustomersWithBalance() {
-        List<Customer> withBalance = new ArrayList<>();
-        for (Customer customer : getAll()) {
-            if (Money.isPositive(customer.getBalance())) {
-                withBalance.add(customer);
-            }
+    /** Highest balance first. */
+    public static final Comparator<Customer> BY_BALANCE_DESC = new Comparator<Customer>() {
+        @Override
+        public int compare(Customer a, Customer b) {
+            return b.getBalance().compareTo(a.getBalance());
         }
-        Algorithms.mergeSort(withBalance, BY_BALANCE_HIGH_TO_LOW);
-        return withBalance;
+    };
+
+    private final ArrayList<Customer> customers = new ArrayList<Customer>();
+
+    /**
+     * Adds a customer, then uses MERGE SORT to restore alphabetical order.
+     *
+     * @throws DuplicateRecordException if a customer with the same name exists
+     *         (ignoring upper/lower case and surrounding spaces)
+     */
+    public void addCustomer(Customer customer) throws DuplicateRecordException {
+        if (customer == null) {
+            throw new IllegalArgumentException("The customer cannot be empty.");
+        }
+        Customer existing = findByName(customer.getName());
+        if (existing != null) {
+            throw new DuplicateRecordException("A customer named \"" + existing.getName() + "\" already exists.");
+        }
+        customers.add(customer);
+        Algorithms.mergeSort(customers, Algorithms.BY_NAME);
     }
 
-    // Adds up every customer's computed balance.
+    /**
+     * Removes a customer. Used to roll back a NEW customer if their first
+     * utang could not be recorded.
+     *
+     * @return true if the customer was removed
+     */
+    public boolean removeCustomer(Customer customer) {
+        return customers.remove(customer);
+    }
+
+    /** Exact name lookup using BINARY SEARCH. Returns null if not found. */
+    public Customer findByName(String name) {
+        if (TextRules.clean(name).isEmpty()) {
+            return null;
+        }
+        int index = Algorithms.binarySearch(customers, Algorithms.nameKey(name), Algorithms.BY_NAME);
+        return index >= 0 ? customers.get(index) : null;
+    }
+
+    /** Partial name lookup using LINEAR SEARCH, e.g. "nena" finds "Aling Nena". */
+    public List<Customer> searchPartial(String keyword) {
+        final String wanted = TextRules.clean(keyword).toLowerCase();
+        if (wanted.isEmpty()) {
+            return new ArrayList<Customer>();
+        }
+        return Algorithms.linearSearchAll(customers, new Algorithms.Condition<Customer>() {
+            @Override
+            public boolean matches(Customer c) {
+                return c.getName().toLowerCase().contains(wanted);
+            }
+        });
+    }
+
+    /** Customers who still owe money, highest balance first (a sorted copy). */
+    public List<Customer> getCustomersWithUtang() {
+        List<Customer> owing = Algorithms.linearSearchAll(customers, new Algorithms.Condition<Customer>() {
+            @Override
+            public boolean matches(Customer c) {
+                return c.hasOutstandingUtang();
+            }
+        });
+        Algorithms.mergeSort(owing, BY_BALANCE_DESC);
+        return owing;
+    }
+
+    /** The sum of all customers' balances. */
     public BigDecimal getTotalOutstanding() {
         BigDecimal total = Money.ZERO;
-        for (Customer customer : getAll()) {
-            total = total.add(customer.getBalance());
+        for (Customer c : customers) {
+            total = total.add(c.getBalance());
         }
         return total;
     }
 
-    // Returns the utang records that match the filter, ordered by customer name A-Z, then date.
-    public List<UtangTransaction> getUtangHistory(HistoryFilter filter) {
-        List<UtangTransaction> history = new ArrayList<>();
-        for (Customer customer : getAll()) {
-            for (UtangTransaction record : customer.getUtangRecords()) {
-                if (filter.matches(record)) {
-                    history.add(record);
-                }
-            }
-        }
-        // Two merge sorts on this copy: first by date, then by customer name. Merge sort is STABLE,
-        // so the second sort keeps the date order among records of the same customer.
-        // Result: customer A-Z, and oldest date first within each customer.
-        Algorithms.mergeSort(history, UtangTransaction.BY_DATE);
-        Algorithms.mergeSort(history, UtangTransaction.BY_CUSTOMER_NAME);
-        return history;
+    /** All customers in alphabetical order (a copy). */
+    public List<Customer> getAllCustomers() {
+        return new ArrayList<Customer>(customers);
     }
 
-    // Counts the utang records that match the filter.
-    public int countUtangRecords(HistoryFilter filter) {
-        return getUtangHistory(filter).size();
+    public int size() {
+        return customers.size();
     }
 
-    // Package-private: only UtangTransaction.applyExecution() calls this, after its checks pass.
-    void register(Customer customer) {
-        addRecord(customer);
+    public boolean isEmpty() {
+        return customers.isEmpty();
     }
 }

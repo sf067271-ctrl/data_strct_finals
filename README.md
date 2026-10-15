@@ -1,135 +1,105 @@
 # Sari-Sari Store Debt and Stock Management System
 
-A terminal-based Java program for a small neighborhood store (sari-sari store). It tracks products and stock,
-cash sales, utang (items taken on credit), utang payments, and lets the operator undo the last transaction.
-It is a Data Structures and Algorithms project that demonstrates **binary search, linear search, merge sort and
-a stack**, plus the four pillars of OOP.
+A terminal-based Java application (Java 8 or newer, standard library only)
+for recording a sari-sari store's products, cash sales, utang (credit) and
+utang payments, with undo.
 
 ## Compile and run
 
-Requires Java 17 or newer. There is no build tool and no external library.
+Open a terminal in this folder:
 
 ```
-javac -Xlint:all *.java
+javac *.java
 java Main
 ```
 
-All data is kept **in memory only** (`ArrayList`s). Sample data loads at startup, and every change is lost
-when the program exits. There is no login, database or file saving.
+**In VS Code:** choose File > Open Folder and select this folder. Then
+open `Main.java` and click **Run** (or press F5 and pick
+*Run Sari-Sari Store System*). Type your answers in the **TERMINAL** panel.
 
-## Cancel command
-
-Inside any option, type **`/cancel`** (any letter case) at a prompt to stop. The program prints
-"Operation cancelled. No changes were made." and returns to the menu. Every prompt that can be cancelled
-says `(or /cancel)`.
-
-## Main menu
+## Menu options
 
 | No. | Option | What it does |
-|---|---|---|
-| 1 | Add product | Code, name, price, opening stock. Rejects duplicate codes/names (ignoring case and extra spaces). |
-| 2 | Search product | Type a code or a name. Shows whether it was found by code (linear search), exact name (binary search) or partial name (linear search). |
-| 3 | Add transaction | Sells one product, paid in cash or as utang (see below). |
-| 4 | View utang history | Sub-menu: 1 Show all, 2 Show unpaid, 3 Show paid, 4 Back. |
-| 5 | Record utang payment | Pays one specific unpaid utang record (partial payments allowed). |
-| 6 | Display products sorted | Sub-menu: 1 Name A-Z, 2 Price low-high, 3 Stock low-high, 4 Best sellers, 5 Back. |
-| 7 | Low-stock alert | Products with stock of 5 or less, lowest first; zero stock is marked OUT OF STOCK. |
-| 8 | Reports | Cash sales, utang payments collected (kept separate), total outstanding utang, unpaid/paid counts, top 3 best sellers, customers with a balance (highest first). |
-| 9 | Undo last transaction | Shows the newest transaction, asks for confirmation, then reverses it. |
-| 10 | Exit | Ends the program. |
+|----|----|----|
+| 1 | Add product | Adds a product with a unique code and name, a positive price and an opening stock (0 allowed). |
+| 2 | Search product | Exact name (binary search), then exact code (linear search), then partial names (linear search). |
+| 3 | Record cash sale | Sells one product for cash and prints a receipt. |
+| 4 | Record utang | Sells one product on credit. A new customer can be created on the spot. |
+| 5 | Record utang payment | Lowers a customer's balance. Overpayments are rejected. |
+| 6 | Search customer | Shows the name, balance and full history (ACTIVE or UNDONE entries). |
+| 7 | Display products sorted | By name, price, stock, or best sellers, using merge sort. |
+| 8 | Low-stock alert | Products with 5 or fewer pieces (including 0), lowest stock first. |
+| 9 | Reports | Session cash sales, total outstanding utang, top 3 best sellers, customers with utang. |
+| 10 | Undo last transaction | Reverses the most recent cash sale, utang or payment (stack, LIFO). |
+| 11 | Exit | Ends the program after a confirmation. |
 
-### Add transaction flow (option 3)
-
-Nothing is changed until the final confirmation.
-
-1. `Enter product code or name (or /cancel):` lookup order is exact code, then exact name, then partial
-   name. Several partial matches give a numbered list; the operator must pick one by number.
-2. Quantity (1 to 10000, and not more than the stock).
-3. Payment method: `1. Cash` or `2. Utang`.
-4. Utang only: customer name (exact name, then partial matches as a numbered list). If the customer does
-   not exist, the program asks whether to create them. Then the date:
-   `Date of this utang (yyyy-MM-dd). Press Enter to use today's date (...)`. Past dates are allowed;
-   future dates, dates before 2000-01-01 and impossible dates (2026-02-30) are rejected.
-   Cash sales and payments always use today's date.
-5. Transaction details are shown (number, date, product, quantity, unit price, total, payment method,
-   customer, stock after sale), then `Save this transaction? (y/n)`.
-6. On save, a receipt shows the remaining stock (and, for utang, the customer's new balance).
-
-### View utang history (option 4)
-
-The table lists No., Date, Customer, Product, Qty, Total, Paid, Remaining and Status, with each record's
-payments on indented lines. Records are ordered by customer name A-Z, then oldest date first. Undone
-records (and undone payments) are marked `[UNDONE]`, appear only under *Show all*, and are left out of
-every total. A summary at the end shows the number of records, total utang, total paid and total remaining.
+**Cancelling:** type `X` at any prompt inside an operation to cancel it and
+return to the main menu. Nothing is changed by a cancelled operation.
 
 ## Sample data
 
-| Code | Name | Price | Stock |
-|---|---|---|---|
-| P001 | Milo Sachet | PHP 9.00 | 30 |
-| P002 | Egg | PHP 10.00 | 4 |
-| P003 | Lucky Me Pancit Canton | PHP 16.00 | 25 |
-| P004 | Coke Sakto | PHP 15.00 | 12 |
-| P005 | Datu Puti Vinegar | PHP 22.00 | 8 |
-| P006 | Safeguard Shampoo Sachet | PHP 7.00 | 0 |
-| P007 | Safeguard Soap | PHP 38.00 | 3 |
+Loaded automatically at startup (labelled `[SAMPLE DATA]` on screen):
 
-Customers: Aling Nena, Mang Tonyo and Ate Lorna, all with no utang. Kuya Ben is *not* preloaded, so
-creating a new customer can be tested. The data is loaded by `Main.loadSampleData()`.
+- 7 products, codes **P001 to P007**: Milo Sachet (PHP 9.00), Egg (PHP 10.00),
+  Lucky Me Pancit Canton (low stock), Kopiko Coffee Candy, Bear Brand Sachet
+  (low stock), Datu Puti Vinegar 200ml (zero stock), Coke Mismo.
+- 3 customers with zero balances and empty histories: Aling Nena, Mang Tonyo, Ate Joy.
 
-## Where each item is implemented
+## In-memory limitation
 
-### Data structures and algorithms
+All records are kept in memory (`ArrayList`). Nothing is saved to a file or
+database, so every change disappears when the program exits. Each run starts
+again from the sample data.
 
-| Item | Where |
-|---|---|
-| Binary search | `Algorithms.binarySearch()`, used by `NamedRecordList.findByName()` (inherited by `Inventory` and `CustomerRecords`). The master lists stay sorted A-Z, and sorting and searching share one rule: `Entity.compareNameKeys()`. |
-| Linear search | `NamedRecordList.searchPartial()` (partial names) and `Inventory.findByCode()` (codes, because the list is sorted by name, not code). |
-| Merge sort (stable) | `Algorithms.mergeSort()` / `merge()`. Used by `NamedRecordList.addRecord()` / `restoreNameOrder()` (A-Z order after adding or renaming), `Inventory.getSortedByName/Price/Stock()`, `getBestSellers()`, `getLowStockProducts()`, `CustomerRecords.getCustomersWithBalance()`, `CustomerRecords.getUtangHistory()` (two sorts: date, then customer name), and `Customer.getUnpaidRecords()`. Displays always sort a copy. |
-| Stack | `UndoStack` wraps `java.util.Stack<Transaction>` (`push`, `pop`, `peek`, `isEmpty`, `size`). Used by `Main.confirmAndSave()` (push) and `Main.undoLastTransaction()` (peek, then pop after a successful reverse). |
+## Where each algorithm and data structure is implemented
 
-### OOP principles
+| Requirement | Where |
+|----|----|
+| Binary search | `Algorithms.binarySearch()`, used by `Inventory.findByName()` and `CustomerRecords.findByName()` |
+| Linear search | `Algorithms.linearSearch()` (`Inventory.findByCode()`) and `Algorithms.linearSearchAll()` (`searchPartial()`, low stock, customers with utang) |
+| Merge sort (stable) | `Algorithms.mergeSort()` and `Algorithms.sortedCopy()`: restoring A-Z order after adding, every display order, low stock, reports |
+| Stack (LIFO) | `UndoStack`, backed by `java.util.Stack<Transaction>`; used by option 10 |
+| ArrayList | Master lists in `Inventory` and `CustomerRecords`, and each customer's history |
+
+The master product and customer lists are always kept in alphabetical
+order (required by binary search). Other orders are made on sorted copies.
+
+## Object-oriented programming
 
 | Principle | Where |
-|---|---|
-| Encapsulation | All fields are `private`. `getAll()`, `getUtangRecords()` and `getPayments()` return read-only lists. Stock and totals change only through checked methods (`Product.recordSale()`/`restoreSale()`, `SalesLedger.addCashSale()` etc. are package-private and called only after validation). `Product.setName()` is package-private and called only by `Inventory.renameProduct()`. The `undone` flag in `Transaction` changes only in `reverse()`. Quantity, unit price and total are `final` in `SaleTransaction`; the payment amount is `final` in `PaymentTransaction`. A customer's balance is computed in `Customer.getBalance()`, never stored. |
-| Abstraction | Abstract class `Entity` (`getSummaryLine()`), abstract class `Transaction` (`validateExecution()`, `applyExecution()`, `validateReversal()`, `applyReversal()`, `describe()`, `describeCurrentState()`), interface `Reversible` (`execute()`, `reverse()`, `isUndone()`), abstract generic `NamedRecordList<T>`. `Inventory`, `CustomerRecords` and `UndoStack` hide their collections and algorithms from `Main`. |
-| Inheritance | `Entity` <- `Product`, `Customer`; `NamedRecordList<T>` <- `Inventory`, `CustomerRecords`; `Transaction` <- `SaleTransaction` <- `CashSaleTransaction`, `UtangTransaction`, and `Transaction` <- `PaymentTransaction`; `StoreException` <- 8 exception classes. Constructors call `super(...)`; shared logic lives in the parent (`describeHeader()`, `validateSale()`, `applySale()`, ...). |
-| Polymorphism | Overriding: every transaction subclass overrides `describe()`, `describeCurrentState()` and the four validate/apply methods; `Product` and `Customer` override `getSummaryLine()` and `toString()`. Runtime dispatch: `Main.confirmAndSave()` calls `transaction.execute()` and `Main.undoLastTransaction()` calls `transaction.reverse()` through the `Transaction` type, with no `if`/`switch` on the type. Generics: `Algorithms.mergeSort(List<T>, Comparator<T>)`, `NamedRecordList<T extends Entity>`. Overloading: `ConsoleInput.readInt(prompt, min, max)` / `readInt(prompt, max)` and `Money.format(amount)` / `format(amount, width)`. |
+|----|----|
+| Encapsulation | All fields are `private`. `Product`, `Customer`, `CashRegister` and `UndoStack` only change through methods that check the rules first (no negative stock or balance, no overselling). Lists are returned as copies. |
+| Abstraction | `Transaction` is an abstract class; `Nameable` and `Algorithms.Condition` are interfaces that hide details from the search and sort code. |
+| Inheritance | `Transaction` → `ProductTransaction` → `CashSaleTransaction` / `UtangTransaction`; `Transaction` → `PaymentTransaction`; `Exception` → `StoreException` → `DuplicateRecordException` / `InsufficientStockException`. |
+| Polymorphism | `undo()`, `getReceipt()`, `getBalanceEffect()` and `getDetails()` behave differently for each transaction type; one `catch (StoreException e)` handles all its subclasses; `Product` and `Customer` are both searched as `Nameable`; `toString()` is overridden. |
 
-The template method is in `Transaction.execute()` and `Transaction.reverse()` (both `final`): validate
-everything first, then apply. A failed check throws before anything changes, so stock, balances, history,
-totals and the undo stack are never partly updated.
+## Validation and exception handling
 
-### Exceptions
+- Blank, too long, or invalid names and codes are rejected. Names may contain
+  spaces, apostrophes and hyphens. Duplicates are checked ignoring upper/lower
+  case and extra spaces.
+- Whole numbers: letters, decimals, negative values and numbers too large
+  for an `int` are rejected.
+- Money uses `BigDecimal`, built from validated text. Negative amounts, NaN,
+  Infinity, scientific notation (`1e3`), commas and more than two decimal
+  places are rejected.
+- Every transaction checks everything **before** changing any record, so a
+  failed or cancelled operation never changes stock, balances, history,
+  totals, or the undo stack.
+- If the input ends (terminal closed), the program exits cleanly.
 
-```
-StoreException (abstract, checked)
-├── ValidationException          bad input: blank, wrong format, out of range
-├── DuplicateRecordException     duplicate product code/name or customer name
-├── RecordNotFoundException      no product/customer found
-├── InsufficientStockException   quantity is more than the stock
-├── InvalidPaymentException      payment zero, too many decimals, above the remaining amount, or nothing to pay
-├── UndoException                nothing to undo, or undo would make data inconsistent
-├── InputCancelledException      operator typed /cancel
-└── EndOfInputException          no more input
-```
+## Files
 
-* `ConsoleInput` catches `ValidationException` / `InvalidPaymentException` at each prompt, prints the
-  message and asks again. `NumberFormatException`, `ArithmeticException` and `DateTimeParseException` are
-  caught where text is parsed (`Validator`, `Money`) and turned into `ValidationException`s.
-* `Main.runOneMenuAction()` wraps every menu action: `InputCancelledException` (cancelled message),
-  `EndOfInputException` (goodbye and clean exit), `StoreException` (error message), and `RuntimeException`
-  ("Unexpected error: ..."; the program keeps running). The single `Scanner` is closed in a `finally` block
-  in `Main.main()`.
-
-## Test inputs
-
-The program is tested by feeding scripted input, for example `java Main < test-inputs/required-sequence.txt`.
-
-| File | What it covers |
-|---|---|
-| `test-inputs/required-sequence.txt` | Cash sale, utang for Aling Nena, two payments (PAID), then undo of everything back to the starting state. |
-| `test-inputs/product-and-menu-validation.txt` | Invalid menu choices, duplicate/invalid codes and names, bad prices and stock, searches, sorting, low stock. |
-| `test-inputs/transaction-validation.txt` | Product selection by code/name/partial, quantities, payment methods, new and declined customers, dates, payments, history filters, `/cancel` at every prompt type, declined undo. |
-| `test-inputs/end-of-input-mid-transaction.txt` | Input ends in the middle of a transaction; the program exits cleanly. |
+| File | Responsibility |
+|----|----|
+| `Main.java` | Startup, menus, workflows, sample data, printing |
+| `InputHelper.java` | Reads and validates all input (uses the one Scanner from Main) |
+| `Product.java`, `Customer.java` | Product and customer information |
+| `Inventory.java`, `CustomerRecords.java` | Storage, searching and sorted lists; product edit/remove methods (not on the menu) |
+| `Transaction.java`, `ProductTransaction.java`, `CashSaleTransaction.java`, `UtangTransaction.java`, `PaymentTransaction.java` | Transaction details, recording and undo |
+| `TransactionType.java` | Enum: cash sale, utang, payment |
+| `UndoStack.java` | The undo stack |
+| `Algorithms.java` | Binary search, linear search, merge sort |
+| `CashRegister.java` | Session cash-sales total |
+| `Money.java`, `TextRules.java`, `Nameable.java` | Small helpers: money, name/code rules, the shared name interface |
+| `StoreException.java`, `DuplicateRecordException.java`, `InsufficientStockException.java`, `InputCancelledException.java`, `EndOfInputException.java` | Exceptions |

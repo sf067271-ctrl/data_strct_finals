@@ -1,80 +1,115 @@
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.Objects;
 
-// A payment on ONE specific utang record. Always dated today. Partial payments are allowed.
-// Demonstrates INHERITANCE (extends Transaction) and POLYMORPHISM (overrides the template steps).
+/**
+ * A customer paying part or all of their utang.
+ *
+ * Record: customer balance DOWN, entry added to history.
+ *         (Cash sales do NOT change: payments are kept separate.)
+ * Undo:   customer balance UP by the original payment; the history entry
+ *         stays but is shown as UNDONE.
+ *
+ * OOP - INHERITANCE: extends Transaction directly (no product involved).
+ * OOP - POLYMORPHISM: overrides getBalanceEffect() to return -amount.
+ */
 public class PaymentTransaction extends Transaction {
-    private final UtangTransaction utangRecord;
+
+    private final Customer customer;
     private final BigDecimal amount;
-    private final SalesLedger ledger;
 
-    public PaymentTransaction(LocalDate today, UtangTransaction utangRecord, BigDecimal amount,
-            SalesLedger ledger) {
-        super(TransactionType.PAYMENT, today);
-        this.utangRecord = Objects.requireNonNull(utangRecord, "utangRecord");
-        this.amount = Objects.requireNonNull(amount, "amount");
-        this.ledger = Objects.requireNonNull(ledger, "ledger");
+    /**
+     * @throws StoreException if the amount is not allowed for this customer
+     */
+    public PaymentTransaction(Customer customer, BigDecimal amount) throws StoreException {
+        super(TransactionType.PAYMENT);
+        if (customer == null) {
+            throw new IllegalArgumentException("A customer must be selected.");
+        }
+        if (amount == null) {
+            throw new IllegalArgumentException("A payment amount is required.");
+        }
+        this.customer = customer;
+        this.amount = amount;
+        checkPaymentRules();   // reject a bad payment as early as possible
     }
 
-    public UtangTransaction getUtangRecord() {
-        return utangRecord;
+    /** Checked again just before recording, in case the balance changed. */
+    @Override
+    protected void validate() throws StoreException {
+        checkPaymentRules();
     }
 
+    /**
+     * The payment rules:
+     *   - the customer must have an outstanding utang,
+     *   - the amount must be greater than zero,
+     *   - it can have at most two decimal places,
+     *   - it cannot exceed the outstanding balance.
+     * (private, so it cannot be overridden and is safe to call from the constructor)
+     */
+    private void checkPaymentRules() throws StoreException {
+        if (!customer.hasOutstandingUtang()) {
+            throw new StoreException(customer.getName() + " has no outstanding utang. Payment rejected.");
+        }
+        if (!Money.isPositive(amount)) {
+            throw new StoreException("The payment must be greater than zero.");
+        }
+        if (!Money.hasAtMostTwoDecimals(amount)) {
+            throw new StoreException("The payment can have at most two decimal places.");
+        }
+        if (amount.compareTo(customer.getBalance()) > 0) {
+            throw new StoreException("Overpayment rejected: " + Money.format(amount) + " is more than "
+                    + customer.getName() + "'s balance of " + Money.format(customer.getBalance()) + ".");
+        }
+    }
+
+    @Override
+    protected void applyChanges() throws StoreException {
+        customer.reduceDebt(amount);
+        customer.addHistory(this);
+    }
+
+    @Override
+    protected void reverseChanges() {
+        customer.addDebt(amount);   // adding a positive amount cannot fail
+    }
+
+    public Customer getCustomer() {
+        return customer;
+    }
+
+    @Override
     public BigDecimal getAmount() {
         return amount;
     }
 
     @Override
-    public String describe() {
-        return describeHeader()
-                + ConsoleFormat.detailLine("Customer", utangRecord.getCustomer().getName())
-                + ConsoleFormat.detailLine("Pays utang record", "#" + utangRecord.getNumber() + " ("
-                        + Validator.formatDate(utangRecord.getDate()) + ", " + utangRecord.getProduct().getName()
-                        + " x" + utangRecord.getQuantity() + ")")
-                + ConsoleFormat.detailLine("Record total", Money.format(utangRecord.getTotalAmount()))
-                + ConsoleFormat.detailLine("Payment amount", Money.format(amount));
+    public BigDecimal getBalanceEffect() {
+        return amount.negate();   // a payment decreases the balance
     }
 
     @Override
-    public String describeCurrentState() {
-        Customer customer = utangRecord.getCustomer();
-        return ConsoleFormat.detailLine("Record paid so far", Money.format(utangRecord.getAmountPaid()))
-                + ConsoleFormat.detailLine("Record remaining", Money.format(utangRecord.getRemaining()))
-                + ConsoleFormat.detailLine("Status", utangRecord.getPaymentStatus())
-                + ConsoleFormat.detailLine(customer.getName() + " balance", Money.format(customer.getBalance()));
+    public String getDetails() {
+        return "Payment from " + customer.getName();
     }
 
     @Override
-    protected void validateExecution() throws StoreException {
-        if (!utangRecord.isExecuted() || utangRecord.isUndone()) {
-            throw new InvalidPaymentException("Utang record #" + utangRecord.getNumber() + " cannot accept payments.");
-        }
-        if (utangRecord.isPaid()) {
-            throw new InvalidPaymentException("Utang record #" + utangRecord.getNumber() + " is already PAID.");
-        }
-        Money.checkPayment(amount, utangRecord.getRemaining());
+    public String getHistoryDetails() {
+        return "Payment received";
     }
 
     @Override
-    protected void applyExecution() {
-        // Step 1: link the payment to its utang record. The record's paid and remaining amounts
-        // (and the customer's balance) are computed from this list, so they update by themselves.
-        utangRecord.addPayment(this);
-        // Step 2: count the money as a collected utang payment, NOT as a cash sale.
-        ledger.addPayment(amount);
+    public String getReceipt() {
+        return "  ------------ PAYMENT RECEIPT ------------\n"
+                + receiptLine("Transaction no.", "#" + getNumber())
+                + receiptLine("Date and time", getRecordedAtText())
+                + receiptLine("Customer", customer.getName())
+                + receiptLine("Amount paid", Money.format(amount))
+                + receiptLine("Balance left", Money.format(customer.getBalance()))
+                + "  -----------------------------------------";
     }
 
     @Override
-    protected void validateReversal() throws StoreException {
-        ledger.checkCanRemovePayment(amount);
-    }
-
-    @Override
-    protected void applyReversal() {
-        // Step 1: subtract the STORED amount from collected payments.
-        ledger.removePayment(amount);
-        // Step 2: once reverse() marks this payment undone, the record's paid amount skips it,
-        // so the remaining amount goes back up (a PAID record becomes UNPAID again).
+    public String getUndoResult() {
+        return customer.getName() + "'s balance is back to " + Money.format(customer.getBalance()) + ".";
     }
 }

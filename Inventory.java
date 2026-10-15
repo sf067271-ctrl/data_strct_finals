@@ -2,144 +2,227 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
-// The store's products. Adds, finds, edits and lists products; the master list stays sorted A-Z.
-// Demonstrates INHERITANCE (extends NamedRecordList<Product>) and ABSTRACTION (Main never sees the list
-// or the algorithms, it only asks for things like "find this product").
-public class Inventory extends NamedRecordList<Product> {
-    public static final int LOW_STOCK_LEVEL = 5;
+/**
+ * Stores and manages all products.
+ *
+ * The master list is ALWAYS kept in alphabetical order by name, because
+ * binary search only works on a sorted list. Other orders (price, stock,
+ * best sellers) are made on a COPY, so the master list never changes order.
+ *
+ * OOP - ENCAPSULATION: the ArrayList is private. Other classes get copies,
+ * so nobody can add an unchecked product or break the alphabetical order.
+ */
+public class Inventory {
 
-    private static final Comparator<Product> BY_PRICE_LOW_TO_HIGH =
-            (first, second) -> first.getPrice().compareTo(second.getPrice());
-    private static final Comparator<Product> BY_STOCK_LOW_TO_HIGH =
-            (first, second) -> Integer.compare(first.getStock(), second.getStock());
-    private static final Comparator<Product> BY_SOLD_HIGH_TO_LOW =
-            (first, second) -> Integer.compare(second.getTotalSold(), first.getTotalSold());
+    // ----- Sort orders (Comparators) used with merge sort -----
 
-    public Inventory() {
-        super("product");
+    /** Lowest price first. */
+    public static final Comparator<Product> BY_PRICE = new Comparator<Product>() {
+        @Override
+        public int compare(Product a, Product b) {
+            return a.getPrice().compareTo(b.getPrice());
+        }
+    };
+
+    /** Lowest stock first. */
+    public static final Comparator<Product> BY_STOCK = new Comparator<Product>() {
+        @Override
+        public int compare(Product a, Product b) {
+            return Integer.compare(a.getStock(), b.getStock());
+        }
+    };
+
+    /** Highest total sold first (b is compared with a to reverse the order). */
+    public static final Comparator<Product> BY_TOTAL_SOLD_DESC = new Comparator<Product>() {
+        @Override
+        public int compare(Product a, Product b) {
+            return Integer.compare(b.getTotalSold(), a.getTotalSold());
+        }
+    };
+
+    private final ArrayList<Product> products = new ArrayList<Product>();
+
+    // =====================================================================
+    //  Adding
+    // =====================================================================
+
+    /**
+     * Adds a product, then uses MERGE SORT to restore alphabetical order.
+     *
+     * @throws DuplicateRecordException if the code or name is already used
+     *         (ignoring upper/lower case and surrounding spaces)
+     */
+    public void addProduct(Product product) throws DuplicateRecordException {
+        if (product == null) {
+            throw new IllegalArgumentException("The product cannot be empty.");
+        }
+        Product sameCode = findByCode(product.getCode());
+        if (sameCode != null) {
+            throw new DuplicateRecordException("Product code " + product.getCode()
+                    + " is already used by \"" + sameCode.getName() + "\".");
+        }
+        Product sameName = findByName(product.getName());
+        if (sameName != null) {
+            throw new DuplicateRecordException("A product named \"" + sameName.getName()
+                    + "\" already exists (code " + sameName.getCode() + ").");
+        }
+        products.add(product);
+        Algorithms.mergeSort(products, Algorithms.BY_NAME);
     }
 
-    // Validates everything, then adds a new product. Rejects duplicate codes and names.
-    public Product addProduct(String rawCode, String rawName, BigDecimal price, int stock)
-            throws ValidationException, DuplicateRecordException {
-        String code = Validator.validateProductCode(rawCode);
-        String name = Validator.validateProductName(rawName);
-        Money.checkPrice(price);
-        Validator.checkStock(stock);
-        checkCodeAvailable(code);
-        checkNameAvailable(name);
-        Product product = new Product(code, name, price, stock);
-        addRecord(product);
+    // =====================================================================
+    //  Searching
+    // =====================================================================
+
+    /** Exact name lookup using BINARY SEARCH. Returns null if not found. */
+    public Product findByName(String name) {
+        if (TextRules.clean(name).isEmpty()) {
+            return null;
+        }
+        int index = Algorithms.binarySearch(products, Algorithms.nameKey(name), Algorithms.BY_NAME);
+        return index >= 0 ? products.get(index) : null;
+    }
+
+    /**
+     * Exact code lookup using LINEAR SEARCH (the list is sorted by name, not
+     * by code, so binary search cannot be used here). Returns null if not found.
+     */
+    public Product findByCode(String code) {
+        final String wanted = TextRules.clean(code);
+        if (wanted.isEmpty()) {
+            return null;
+        }
+        int index = Algorithms.linearSearch(products, new Algorithms.Condition<Product>() {
+            @Override
+            public boolean matches(Product p) {
+                return p.getCode().equalsIgnoreCase(wanted);
+            }
+        });
+        return index >= 0 ? products.get(index) : null;
+    }
+
+    /** Partial name lookup using LINEAR SEARCH, e.g. "pan" finds "Lucky Me Pancit Canton". */
+    public List<Product> searchPartial(String keyword) {
+        final String wanted = TextRules.clean(keyword).toLowerCase();
+        if (wanted.isEmpty()) {
+            return new ArrayList<Product>();
+        }
+        return Algorithms.linearSearchAll(products, new Algorithms.Condition<Product>() {
+            @Override
+            public boolean matches(Product p) {
+                return p.getName().toLowerCase().contains(wanted);
+            }
+        });
+    }
+
+    // =====================================================================
+    //  Lists for display and reports (all are sorted COPIES)
+    // =====================================================================
+
+    /** All products in alphabetical order (a copy). */
+    public List<Product> getAllProducts() {
+        return new ArrayList<Product>(products);
+    }
+
+    /** A copy of the products sorted with merge sort in the given order. */
+    public List<Product> getSortedCopy(Comparator<? super Product> order) {
+        return Algorithms.sortedCopy(products, order);
+    }
+
+    /** Products with stock at or below the limit (zero included), lowest stock first. */
+    public List<Product> getLowStockProducts(final int limit) {
+        List<Product> low = Algorithms.linearSearchAll(products, new Algorithms.Condition<Product>() {
+            @Override
+            public boolean matches(Product p) {
+                return p.isLowStock(limit);
+            }
+        });
+        Algorithms.mergeSort(low, BY_STOCK);   // sorting the new list, not the master list
+        return low;
+    }
+
+    /** Up to maxCount products that HAVE sales, most sold first. */
+    public List<Product> getBestSellers(int maxCount) {
+        List<Product> sorted = Algorithms.sortedCopy(products, BY_TOTAL_SOLD_DESC);
+        List<Product> result = new ArrayList<Product>();
+        for (int i = 0; i < sorted.size() && result.size() < maxCount; i++) {
+            if (sorted.get(i).getTotalSold() > 0) {   // products with zero sales are excluded
+                result.add(sorted.get(i));
+            }
+        }
+        return result;
+    }
+
+    public int size() {
+        return products.size();
+    }
+
+    public boolean isEmpty() {
+        return products.isEmpty();
+    }
+
+    // =====================================================================
+    //  Edit and remove (available in code, NOT connected to the menu,
+    //  to match the documented project scope)
+    // =====================================================================
+
+    /**
+     * Removes a product by code.
+     *
+     * @return the removed product
+     * @throws StoreException if no product has this code
+     */
+    public Product removeProduct(String code) throws StoreException {
+        Product product = requireByCode(code);
+        products.remove(product);   // removing keeps the remaining products in order
         return product;
     }
 
-    // LINEAR SEARCH by product code (ignoring case). The list is sorted by NAME, not by code,
-    // so binary search cannot be used here; we check each product one by one. Time: O(n).
-    // Returns null if no product has that code.
-    public Product findByCode(String code) {
-        String wantedCode = code.trim().toUpperCase(Locale.ROOT);
-        for (Product product : getAll()) {
-            if (product.getCode().equals(wantedCode)) {
-                return product;
-            }
-        }
-        return null;
-    }
-
-    // Throws if another product already uses this code.
-    public void checkCodeAvailable(String code) throws DuplicateRecordException {
-        Product existing = findByCode(code);
-        if (existing != null) {
-            throw new DuplicateRecordException("Product code " + existing.getCode()
-                    + " is already used by " + existing.getName() + ".");
-        }
-    }
-
-    // NOTE: renameProduct(), editPrice(), editStock() and removeProduct() are not in the menu
-    // (outside the documented project scope). If they are ever added to the menu, removeProduct()
-    // must first check that no transaction on the undo stack refers to the product.
-
-    // Renames a product, keeping names unique and the master list sorted.
-    public void renameProduct(String code, String newName)
-            throws RecordNotFoundException, ValidationException, DuplicateRecordException {
+    /**
+     * Renames a product. The new name must still be unique, and the master
+     * list is re-sorted with merge sort so binary search keeps working.
+     *
+     * @throws StoreException if the code is unknown or the new name is already used
+     */
+    public void editProductName(String code, String newName) throws StoreException {
         Product product = requireByCode(code);
-        String cleanName = Validator.validateProductName(newName);
-        // A different product with the same name is a duplicate. The same product is fine
-        // (for example, changing "egg" to "Egg").
-        Product sameName = findByName(cleanName);
+        Product sameName = findByName(newName);
         if (sameName != null && sameName != product) {
             throw new DuplicateRecordException("A product named \"" + sameName.getName() + "\" already exists.");
         }
-        product.setName(cleanName);
-        // The new name may belong somewhere else in A-Z order. Binary search only works on a
-        // sorted list, so we must re-sort the master list now.
-        restoreNameOrder();
-    }
-
-    // Changes a product's price. Past transactions keep the price they were recorded with.
-    public void editPrice(String code, BigDecimal newPrice) throws RecordNotFoundException, ValidationException {
-        Product product = requireByCode(code);
-        Money.checkPrice(newPrice);
-        product.setPrice(newPrice);
-    }
-
-    // Changes a product's stock (0 to 1000000).
-    public void editStock(String code, int newStock) throws RecordNotFoundException, ValidationException {
-        Product product = requireByCode(code);
-        Validator.checkStock(newStock);
-        product.setStock(newStock);
-    }
-
-    // Removes a product from the master list.
-    public void removeProduct(String code) throws RecordNotFoundException {
-        removeRecord(requireByCode(code));
-    }
-
-    // Returns a copy sorted by name A-Z.
-    public List<Product> getSortedByName() {
-        return sortedCopy(getNameOrder());
-    }
-
-    // Returns a copy sorted by price, lowest first. Equal prices keep A-Z order (stable sort).
-    public List<Product> getSortedByPrice() {
-        return sortedCopy(BY_PRICE_LOW_TO_HIGH);
-    }
-
-    // Returns a copy sorted by stock, lowest first. Equal stock keeps A-Z order (stable sort).
-    public List<Product> getSortedByStock() {
-        return sortedCopy(BY_STOCK_LOW_TO_HIGH);
-    }
-
-    // Returns products that sold at least one item, highest total sold first.
-    public List<Product> getBestSellers() {
-        List<Product> sold = new ArrayList<>();
-        for (Product product : getAll()) {
-            if (product.getTotalSold() > 0) {
-                sold.add(product);
-            }
+        try {
+            product.setName(newName);
+        } catch (IllegalArgumentException e) {
+            throw new StoreException(e.getMessage());
         }
-        Algorithms.mergeSort(sold, BY_SOLD_HIGH_TO_LOW);
-        return sold;
+        Algorithms.mergeSort(products, Algorithms.BY_NAME);
     }
 
-    // Returns products with stock of LOW_STOCK_LEVEL or less (including zero), lowest stock first.
-    public List<Product> getLowStockProducts() {
-        List<Product> lowStock = new ArrayList<>();
-        for (Product product : getAll()) {
-            if (product.getStock() <= LOW_STOCK_LEVEL) {
-                lowStock.add(product);
-            }
+    /** Changes a product's price. @throws StoreException if the code or price is invalid */
+    public void editProductPrice(String code, BigDecimal newPrice) throws StoreException {
+        Product product = requireByCode(code);
+        try {
+            product.setPrice(newPrice);
+        } catch (IllegalArgumentException e) {
+            throw new StoreException(e.getMessage());
         }
-        Algorithms.mergeSort(lowStock, BY_STOCK_LOW_TO_HIGH);
-        return lowStock;
     }
 
-    private Product requireByCode(String code) throws RecordNotFoundException {
+    /** Changes a product's stock quantity. @throws StoreException if the code or quantity is invalid */
+    public void editProductStock(String code, int newStock) throws StoreException {
+        Product product = requireByCode(code);
+        try {
+            product.setStock(newStock);
+        } catch (IllegalArgumentException e) {
+            throw new StoreException(e.getMessage());
+        }
+    }
+
+    private Product requireByCode(String code) throws StoreException {
         Product product = findByCode(code);
         if (product == null) {
-            throw new RecordNotFoundException("No product has the code " + code.trim().toUpperCase(Locale.ROOT) + ".");
+            throw new StoreException("No product has the code \"" + TextRules.clean(code) + "\".");
         }
         return product;
     }

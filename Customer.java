@@ -1,79 +1,99 @@
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
 
-// A customer and their utang records.
-// Demonstrates INHERITANCE (extends Entity), ENCAPSULATION (the record list is private and read-only
-// outside) and POLYMORPHISM (overrides getSummaryLine() and toString()).
-public class Customer extends Entity {
-    private static final int NAME_WIDTH = 26;
-    private static final int MONEY_WIDTH = 16;
-    private static final int COUNT_WIDTH = 14;
-    private static final String ROW_FORMAT = "%-" + NAME_WIDTH + "s %" + MONEY_WIDTH + "s %" + COUNT_WIDTH + "s";
-    public static final String TABLE_HEADER =
-            String.format(Locale.US, ROW_FORMAT, "Customer", "Balance", "Unpaid records");
+/**
+ * A customer who may buy on credit (utang).
+ *
+ * OOP - ENCAPSULATION:
+ *   The balance and history are private. The balance can only change through
+ *   addDebt() and reduceDebt(), which check the amount first, so it can never
+ *   become negative. getHistory() returns a COPY, so no other class can
+ *   delete or rearrange the history.
+ *
+ * OOP - ABSTRACTION / POLYMORPHISM:
+ *   Implements Nameable, so customers are searched and sorted with the same
+ *   algorithms as products.
+ */
+public class Customer implements Nameable {
 
-    private final List<UtangTransaction> utangRecords = new ArrayList<>();
+    private final String name;
+    private BigDecimal balance;
+    private final ArrayList<Transaction> history;
 
-    // The name must already be validated by CustomerRecords.
+    /**
+     * Creates a customer with a zero balance and an empty history.
+     *
+     * @throws IllegalArgumentException if the name breaks the name rules
+     */
     public Customer(String name) {
-        super(name);
-    }
-
-    // The balance is COMPUTED from the records instead of being stored in a field. A stored
-    // balance could drift away from the records (for example after an undo); this cannot.
-    public BigDecimal getBalance() {
-        BigDecimal outstandingBalance = Money.ZERO;
-        for (UtangTransaction record : utangRecords) {
-            if (!record.isUndone()) {
-                outstandingBalance = outstandingBalance.add(record.getRemaining());
-            }
+        String problem = TextRules.checkName(name);
+        if (problem != null) {
+            throw new IllegalArgumentException(problem);
         }
-        return outstandingBalance;
-    }
-
-    // Read-only list of every utang record, including undone ones.
-    public List<UtangTransaction> getUtangRecords() {
-        return Collections.unmodifiableList(utangRecords);
-    }
-
-    // Returns the records that still have something to pay, oldest date first.
-    public List<UtangTransaction> getUnpaidRecords() {
-        List<UtangTransaction> unpaid = new ArrayList<>();
-        for (UtangTransaction record : utangRecords) {
-            if (HistoryFilter.UNPAID.matches(record)) {
-                unpaid.add(record);
-            }
-        }
-        Algorithms.mergeSort(unpaid, UtangTransaction.BY_DATE);
-        return unpaid;
-    }
-
-    // Same as getUnpaidRecords(), but throws if there is nothing to pay.
-    public List<UtangTransaction> requireUnpaidRecords() throws InvalidPaymentException {
-        List<UtangTransaction> unpaid = getUnpaidRecords();
-        if (unpaid.isEmpty()) {
-            throw new InvalidPaymentException(getName() + " has no unpaid utang records. Nothing to pay.");
-        }
-        return unpaid;
+        this.name = TextRules.clean(name);
+        this.balance = Money.ZERO;
+        this.history = new ArrayList<Transaction>();
     }
 
     @Override
-    public String getSummaryLine() {
-        return String.format(Locale.US, ROW_FORMAT, ConsoleFormat.fit(getName(), NAME_WIDTH),
-                Money.format(getBalance()), String.valueOf(getUnpaidRecords().size()));
+    public String getName() {
+        return name;
     }
 
+    public BigDecimal getBalance() {
+        return balance;
+    }
+
+    /** True if the customer still owes money. */
+    public boolean hasOutstandingUtang() {
+        return balance.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    /** Returns a COPY of the history (oldest first), so it cannot be changed from outside. */
+    public List<Transaction> getHistory() {
+        return new ArrayList<Transaction>(history);
+    }
+
+    // =====================================================================
+    //  Changes made by transactions (package-private: not for the menus)
+    // =====================================================================
+
+    /** Increases the balance (utang recorded, or a payment undone). */
+    void addDebt(BigDecimal amount) {
+        if (!Money.isPositive(amount)) {
+            throw new IllegalArgumentException("The amount added to a balance must be greater than zero.");
+        }
+        balance = balance.add(amount);
+    }
+
+    /**
+     * Decreases the balance (payment recorded, or an utang undone).
+     *
+     * @throws StoreException if the amount is bigger than the balance
+     */
+    void reduceDebt(BigDecimal amount) throws StoreException {
+        if (!Money.isPositive(amount)) {
+            throw new StoreException("The amount must be greater than zero.");
+        }
+        if (amount.compareTo(balance) > 0) {
+            throw new StoreException("The amount " + Money.format(amount) + " is more than "
+                    + name + "'s balance of " + Money.format(balance) + ".");
+        }
+        balance = balance.subtract(amount);
+    }
+
+    /** Adds an utang or payment to the end of the history. */
+    void addHistory(Transaction transaction) {
+        if (transaction == null) {
+            throw new IllegalArgumentException("A history entry cannot be empty.");
+        }
+        history.add(transaction);
+    }
+
+    /** OOP - POLYMORPHISM: overrides Object.toString(). */
     @Override
     public String toString() {
-        return getName() + " (balance " + Money.format(getBalance()) + ")";
-    }
-
-    // Package-private: only UtangTransaction.applyExecution() calls this, after its checks pass.
-    void addUtangRecord(UtangTransaction record) {
-        utangRecords.add(Objects.requireNonNull(record, "record"));
+        return name + " (balance " + Money.format(balance) + ")";
     }
 }

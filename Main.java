@@ -1,624 +1,828 @@
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
-import java.util.Locale;
 import java.util.Scanner;
 
-// Starts the program, shows the menus, runs each workflow and catches errors at the top level.
-// It holds no business rules: those live in Inventory, CustomerRecords, the transactions and Validator.
-// Demonstrates ABSTRACTION (asks objects to do things without knowing how) and POLYMORPHISM
-// (saves and undoes every transaction through the Transaction type).
+/**
+ * SARI-SARI STORE DEBT AND STOCK MANAGEMENT SYSTEM
+ *
+ * Main starts the program, shows the menus, reads the operator's input
+ * (through InputHelper) and coordinates each transaction.
+ *
+ * How every transaction is kept safe:
+ *   1. Collect ALL input first (typing X cancels at any point).
+ *   2. Show a summary and ask for confirmation.
+ *   3. Only then record it. The transaction checks itself again before
+ *      changing anything, so a failed or cancelled operation never leaves
+ *      stock, balances, history, totals or the undo stack half-changed.
+ *
+ * All data is kept in memory (ArrayLists). Sample data is loaded at startup
+ * and everything is discarded when the program exits.
+ *
+ * Compile:  javac *.java
+ * Run:      java Main
+ */
 public class Main {
-    private static final int MENU_ADD_PRODUCT = 1;
-    private static final int MENU_SEARCH_PRODUCT = 2;
-    private static final int MENU_ADD_TRANSACTION = 3;
-    private static final int MENU_UTANG_HISTORY = 4;
-    private static final int MENU_RECORD_PAYMENT = 5;
-    private static final int MENU_PRODUCTS_SORTED = 6;
-    private static final int MENU_LOW_STOCK = 7;
-    private static final int MENU_REPORTS = 8;
-    private static final int MENU_UNDO = 9;
-    private static final int MENU_EXIT = 10;
 
-    private static final int SORT_BY_NAME = 1;
-    private static final int SORT_BY_PRICE = 2;
-    private static final int SORT_BY_STOCK = 3;
-    private static final int SORT_BY_BEST_SELLERS = 4;
-    private static final int SORT_MENU_BACK = 5;
+    /** A product is low on stock when it has this many pieces or fewer. */
+    private static final int LOW_STOCK_LIMIT = 5;
 
-    private static final int HISTORY_MENU_BACK = 4;
-    private static final int TOP_SELLER_COUNT = 3;
-    private static final int CREATE_NEW_CUSTOMER_CHOICE = 0;
-    private static final String NO_RECORDS = "No records found.";
+    private static final int LINE_WIDTH = 78;
 
-    private final ConsoleInput input;
+    private final InputHelper input;
     private final Inventory inventory = new Inventory();
-    private final CustomerRecords customers = new CustomerRecords();
-    private final SalesLedger ledger = new SalesLedger();
+    private final CustomerRecords customerRecords = new CustomerRecords();
     private final UndoStack undoStack = new UndoStack();
+    private final CashRegister cashRegister = new CashRegister();
 
-    public Main(ConsoleInput input) {
-        this.input = input;
+    public Main(Scanner scanner) {
+        this.input = new InputHelper(scanner);
     }
 
-    // Program entry point. Creates the one and only Scanner and closes it when the program ends.
     public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        try {
-            new Main(new ConsoleInput(scanner)).run();
-        } finally {
-            scanner.close();
-        }
+        Scanner scanner = new Scanner(System.in);   // the ONE Scanner used by the whole program
+        Main app = new Main(scanner);
+        app.run();
     }
 
-    // Loads the sample data, then shows the main menu until the operator exits or input ends.
-    public void run() {
-        System.out.println("==============================================");
-        System.out.println(" Sari-Sari Store Debt and Stock Management");
-        System.out.println("==============================================");
+    // =====================================================================
+    //  Main menu loop
+    // =====================================================================
+
+    private void run() {
         loadSampleData();
+
         boolean running = true;
         while (running) {
-            printMainMenu();
-            running = runOneMenuAction();
+            try {
+                printMainMenu();
+                int choice = input.readMenuChoice("Enter your choice (1-11): ", 1, 11);
+                running = handleMenuChoice(choice);
+            } catch (EndOfInputException e) {
+                System.out.println();
+                System.out.println("No more input was received. Closing the program.");
+                running = false;
+            }
         }
+        System.out.println();
+        System.out.println("Thank you for using the system. Salamat po!");
+        System.out.println("(This session's changes were kept in memory only and are now cleared.)");
     }
 
-    // ---------------------------------------------------------------- menu loop
-
-    // Reads one menu choice and runs it. Every error is caught here, so the program keeps running.
-    // Returns false when the program should stop.
-    private boolean runOneMenuAction() {
+    /**
+     * Runs the chosen menu option and handles every error in ONE place.
+     *
+     * Exception handling:
+     *   InputCancelledException  - operator typed X: nothing was changed
+     *   StoreException           - a business rule was broken (catches all its
+     *                              subclasses too: polymorphism)
+     *   IllegalArgumentException - invalid data reached a class's validation
+     *   EndOfInputException      - passed up to run() to exit politely
+     *   RuntimeException         - any unexpected bug: report it, keep running
+     *
+     * @return false if the program should end
+     */
+    private boolean handleMenuChoice(int choice) {
+        boolean pauseAfter = true;
         try {
-            int choice = input.readMenuChoice(MENU_EXIT);
-            return handleMenuChoice(choice);
-        } catch (InputCancelledException cancelled) {
-            System.out.println(cancelled.getMessage());
-        } catch (EndOfInputException endOfInput) {
-            System.out.println("No more input. Goodbye! (Session data is not saved.)");
-            return false;
-        } catch (StoreException storeProblem) {
-            ConsoleFormat.printError(storeProblem.getMessage());
-        } catch (RuntimeException unexpected) {
-            ConsoleFormat.printError("Unexpected error: " + unexpected.getClass().getSimpleName()
-                    + (unexpected.getMessage() == null ? "" : " - " + unexpected.getMessage()));
+            switch (choice) {
+                case 1:
+                    addProduct();
+                    break;
+                case 2:
+                    searchProduct();
+                    break;
+                case 3:
+                    recordCashSale();
+                    break;
+                case 4:
+                    recordUtang();
+                    break;
+                case 5:
+                    recordUtangPayment();
+                    break;
+                case 6:
+                    searchCustomer();
+                    break;
+                case 7:
+                    displayProductsSorted();   // has its own sub-menu loop
+                    pauseAfter = false;
+                    break;
+                case 8:
+                    showLowStockAlert();
+                    break;
+                case 9:
+                    showReports();
+                    break;
+                case 10:
+                    undoLastTransaction();
+                    break;
+                case 11:
+                    if (confirmExit()) {
+                        return false;
+                    }
+                    pauseAfter = false;
+                    break;
+                default:
+                    printError("Unknown menu option.");
+                    break;
+            }
+        } catch (InputCancelledException e) {
+            printInfo("Cancelled. No records were changed.");
+        } catch (InsufficientStockException e) {
+            printError(e.getMessage());
+        } catch (StoreException e) {
+            printError(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            printError(e.getMessage());
+        } catch (EndOfInputException e) {
+            throw e;   // let run() end the program
+        } catch (RuntimeException e) {
+            printError("Something unexpected happened: " + e + ". No further changes were made.");
         }
-        return true;
-    }
 
-    // Runs the chosen menu option. Returns false only for Exit.
-    private boolean handleMenuChoice(int choice) throws StoreException {
-        switch (choice) {
-            case MENU_ADD_PRODUCT:
-                addProduct();
-                break;
-            case MENU_SEARCH_PRODUCT:
-                searchProduct();
-                break;
-            case MENU_ADD_TRANSACTION:
-                addTransaction();
-                break;
-            case MENU_UTANG_HISTORY:
-                viewUtangHistory();
-                break;
-            case MENU_RECORD_PAYMENT:
-                recordUtangPayment();
-                break;
-            case MENU_PRODUCTS_SORTED:
-                displayProductsSorted();
-                break;
-            case MENU_LOW_STOCK:
-                showLowStockAlert();
-                break;
-            case MENU_REPORTS:
-                showReports();
-                break;
-            case MENU_UNDO:
-                undoLastTransaction();
-                break;
-            case MENU_EXIT:
-                System.out.println("Goodbye! All changes from this session are now discarded.");
-                return false;
-            default:
-                throw new IllegalStateException("Menu choice was not validated: " + choice);
+        if (pauseAfter) {
+            input.pause();
         }
         return true;
     }
 
     private void printMainMenu() {
-        ConsoleFormat.printHeading("Main Menu");
-        System.out.println(" 1. Add product");
-        System.out.println(" 2. Search product");
-        System.out.println(" 3. Add transaction");
-        System.out.println(" 4. View utang history");
-        System.out.println(" 5. Record utang payment");
-        System.out.println(" 6. Display products sorted");
-        System.out.println(" 7. Low-stock alert");
-        System.out.println(" 8. Reports");
-        System.out.println(" 9. Undo last transaction");
-        System.out.println("10. Exit");
+        System.out.println();
+        System.out.println(repeat('=', LINE_WIDTH));
+        System.out.println(center("SARI-SARI STORE"));
+        System.out.println(center("Debt (Utang) and Stock Management System"));
+        System.out.println(repeat('=', LINE_WIDTH));
+        System.out.println("   1. Add product                     7. Display products sorted");
+        System.out.println("   2. Search product                  8. Low-stock alert");
+        System.out.println("   3. Record cash sale                9. Reports");
+        System.out.println("   4. Record utang                   10. Undo last transaction");
+        System.out.println("   5. Record utang payment           11. Exit");
+        System.out.println("   6. Search customer");
+        System.out.println(repeat('-', LINE_WIDTH));
+        System.out.println("   Products: " + inventory.size()
+                + "   |   Customers: " + customerRecords.size()
+                + "   |   Cash sales: " + Money.format(cashRegister.getTotal())
+                + "   |   Undo available: " + undoStack.size());
+        System.out.println(repeat('=', LINE_WIDTH));
     }
 
-    // ---------------------------------------------------------------- 1. add product
+    // =====================================================================
+    //  1. Add product
+    // =====================================================================
 
     private void addProduct() throws StoreException {
-        ConsoleFormat.printHeading("Add Product");
-        String code = readNewProductCode();
-        String name = readNewProductName();
-        BigDecimal price = input.readPrice("Enter price in PHP (example: 12.50)");
-        int stock = input.readStock("Enter opening stock (" + Validator.MIN_STOCK + "-" + Validator.MAX_STOCK + ")");
-        Product product = inventory.addProduct(code, name, price, stock);
-        ConsoleFormat.printOk("Product added: " + product);
-    }
+        printHeading("ADD PRODUCT");
+        printCancelHint();
 
-    // Asks for a code until it is valid and not used yet.
-    private String readNewProductCode() throws InputCancelledException, EndOfInputException {
+        // Ask again until the code is not used yet
+        String code;
         while (true) {
-            String code = input.readProductCode("Enter product code (1-12 letters, digits or -)");
-            try {
-                inventory.checkCodeAvailable(code);
-                return code;
-            } catch (DuplicateRecordException duplicate) {
-                ConsoleFormat.printError(duplicate.getMessage());
+            code = input.readCode("Product code (e.g. P008): ");
+            Product sameCode = inventory.findByCode(code);   // linear search
+            if (sameCode == null) {
+                break;
             }
+            printError("Code " + code + " is already used by \"" + sameCode.getName() + "\". Enter a different code.");
         }
-    }
 
-    // Asks for a name until it is valid and not used yet.
-    private String readNewProductName() throws InputCancelledException, EndOfInputException {
+        // Ask again until the name is not used yet
+        String name;
         while (true) {
-            String name = input.readProductName("Enter product name");
-            try {
-                inventory.checkNameAvailable(name);
-                return name;
-            } catch (DuplicateRecordException duplicate) {
-                ConsoleFormat.printError(duplicate.getMessage());
+            name = input.readName("Product name: ");
+            Product sameName = inventory.findByName(name);   // binary search
+            if (sameName == null) {
+                break;
             }
+            printError("\"" + sameName.getName() + "\" already exists (code " + sameName.getCode() + "). Enter a different name.");
         }
-    }
 
-    // ---------------------------------------------------------------- 2. search product
+        BigDecimal price = input.readMoney("Price per piece in PHP (e.g. 12.50): ", Money.ONE_CENTAVO, Money.MAX_AMOUNT);
+        int stock = input.readWholeNumber("Opening stock (0 to " + Product.MAX_STOCK + "): ", 0, Product.MAX_STOCK);
 
-    // Shows which search found the product: code (linear), exact name (binary) or partial name (linear).
-    private void searchProduct() throws StoreException {
-        ConsoleFormat.printHeading("Search Product");
-        String text = input.readSearchText("Enter product code or name");
-        Product byCode = inventory.findByCode(text);
-        if (byCode != null) {
-            System.out.println("Found by product code (linear search):");
-            printProductTable(List.of(byCode));
-            return;
-        }
-        Product byName = inventory.findByName(text);
-        if (byName != null) {
-            System.out.println("Found by exact name (binary search):");
-            printProductTable(List.of(byName));
-            return;
-        }
-        List<Product> matches = inventory.searchPartial(text);
-        if (matches.isEmpty()) {
-            System.out.println(inventory.noMatchMessage(text) + " " + NO_RECORDS);
-            return;
-        }
-        System.out.println(matches.size() + " product(s) with names containing \"" + text + "\" (linear search):");
-        printProductTable(matches);
-    }
+        Product product = new Product(code, name, price, stock);
 
-    // ---------------------------------------------------------------- 3. add transaction
-
-    // Builds a cash or utang sale step by step. Nothing changes until the operator confirms.
-    private void addTransaction() throws StoreException {
-        ConsoleFormat.printHeading("Add Transaction");
-        Product product = selectProduct();
-        System.out.println("Selected: " + product);
-        product.checkInStock();
-        int quantity = readQuantityFor(product);
-        PaymentMethod method = readPaymentMethod();
-        SaleTransaction sale = createSale(product, quantity, method);
-        // Run every save check now, so problems (like a balance above the limit) show before confirming.
-        sale.checkCanExecute();
-        ConsoleFormat.printHeading("Transaction Details");
-        System.out.print(sale.describe());
-        System.out.print(ConsoleFormat.detailLine("Stock after sale",
-                String.valueOf(product.getStockAfterSelling(quantity))));
-        confirmAndSave(sale, "Save this transaction?");
-    }
-
-    // Asks for a quantity until it is valid and not more than the stock on hand.
-    private int readQuantityFor(Product product) throws InputCancelledException, EndOfInputException {
-        while (true) {
-            int quantity = input.readQuantity("Enter quantity (1-" + Validator.MAX_QUANTITY
-                    + ", available: " + product.getStock() + ")");
-            try {
-                product.checkCanSell(quantity);
-                return quantity;
-            } catch (InsufficientStockException | ValidationException cannotSell) {
-                ConsoleFormat.printError(cannotSell.getMessage());
-            }
-        }
-    }
-
-    private PaymentMethod readPaymentMethod() throws InputCancelledException, EndOfInputException {
-        System.out.println("Payment method:");
-        for (PaymentMethod method : PaymentMethod.values()) {
-            System.out.println("  " + method.getMenuNumber() + ". " + method.getLabel());
-        }
-        int number = input.readInt("Choose payment method", PaymentMethod.values().length);
-        return PaymentMethod.fromMenuNumber(number);
-    }
-
-    // Cash: today's date, no customer. Utang: choose (or create) a customer, then the date.
-    private SaleTransaction createSale(Product product, int quantity, PaymentMethod method) throws StoreException {
-        LocalDate today = LocalDate.now();
-        if (method == PaymentMethod.CASH) {
-            return new CashSaleTransaction(today, product, quantity, ledger);
-        }
-        Customer customer = selectOrCreateCustomer();
-        LocalDate date = input.readUtangDate(today);
-        return new UtangTransaction(date, product, quantity, customer, customers);
-    }
-
-    // Shared by "Add transaction" and "Record utang payment". Uses only the Transaction type.
-    private void confirmAndSave(Transaction transaction, String question) throws StoreException {
-        if (!input.readYesNo(question)) {
-            throw new InputCancelledException();
-        }
-        // POLYMORPHISM: execute() runs the checks and changes of the actual subclass.
-        transaction.execute();
-        undoStack.push(transaction);
-        ConsoleFormat.printOk("Transaction #" + transaction.getNumber() + " saved.");
-        ConsoleFormat.printHeading("Receipt");
-        System.out.print(transaction.describe());
-        System.out.print(transaction.describeCurrentState());
-    }
-
-    // ---------------------------------------------------------------- selecting products and customers
-
-    // PRODUCT SELECTION: exact code -> exact name -> partial name. A product is never guessed.
-    private Product selectProduct() throws StoreException {
-        // Step 1: read what the operator typed.
-        String text = input.readSearchText("Enter product code or name");
-        // Step 2: exact code, by linear search (the list is sorted by name, not code).
-        Product product = inventory.findByCode(text);
-        if (product != null) {
-            return product;
-        }
-        // Step 3: exact name, by binary search on the A-Z master list.
-        product = inventory.findByName(text);
-        if (product != null) {
-            return product;
-        }
-        // Step 4: partial name, by linear search. If several match, the operator must pick one.
-        List<Product> matches = inventory.searchPartial(text);
-        if (matches.isEmpty()) {
-            throw new RecordNotFoundException(inventory.noMatchMessage(text));
-        }
-        printNumberedList("Products with names containing \"" + text + "\":", matches);
-        return matches.get(input.readInt("Enter the number of the product", matches.size()) - 1);
-    }
-
-    // CUSTOMER SELECTION for utang: exact name -> partial name -> offer to create a new customer.
-    private Customer selectOrCreateCustomer() throws StoreException {
-        while (true) {
-            String text = input.readSearchText("Enter customer name");
-            Customer customer = findCustomer(text, true);
-            if (customer != null) {
-                return customer;
-            }
-            // Nothing chosen: offer to create. "n" cancels the whole transaction.
-            if (!input.readYesNo("Customer \"" + text + "\" was not found. Create this customer?")) {
-                throw new InputCancelledException();
-            }
-            try {
-                Customer newCustomer = customers.createCustomer(text);
-                System.out.println("New customer \"" + newCustomer.getName()
-                        + "\" will be added when this transaction is saved.");
-                return newCustomer;
-            } catch (ValidationException | DuplicateRecordException invalidName) {
-                ConsoleFormat.printError(invalidName.getMessage() + " Please enter the name again.");
-            }
-        }
-    }
-
-    // CUSTOMER SELECTION for payments: exact name -> partial name. Never creates a customer.
-    private Customer selectExistingCustomer() throws StoreException {
-        String text = input.readSearchText("Enter customer name");
-        Customer customer = findCustomer(text, false);
-        if (customer == null) {
-            throw new RecordNotFoundException(customers.noMatchMessage(text));
-        }
-        return customer;
-    }
-
-    // Returns the matching customer, or null if there is no match or the operator chose
-    // "create a new customer" (that choice is offered only when allowCreate is true).
-    private Customer findCustomer(String text, boolean allowCreate) throws StoreException {
-        // Step 1: exact name, by binary search.
-        Customer exact = customers.findByName(text);
-        if (exact != null) {
-            return exact;
-        }
-        // Step 2: partial name, by linear search.
-        List<Customer> matches = customers.searchPartial(text);
-        if (matches.isEmpty()) {
-            return null;
-        }
-        // Step 3: the operator must pick exactly one (or 0 to create a new customer instead).
-        printNumberedList("Customers with names containing \"" + text + "\":", matches);
-        int lowestChoice = 1;
-        if (allowCreate) {
-            System.out.println("  " + CREATE_NEW_CUSTOMER_CHOICE + ". None of these (new customer \"" + text + "\")");
-            lowestChoice = CREATE_NEW_CUSTOMER_CHOICE;
-        }
-        int choice = input.readInt("Enter the number of the customer", lowestChoice, matches.size());
-        return choice == CREATE_NEW_CUSTOMER_CHOICE ? null : matches.get(choice - 1);
-    }
-
-    // Prints "1. item", "2. item", ... using each item's toString().
-    private <T> void printNumberedList(String title, List<T> items) {
-        System.out.println(title);
-        for (int index = 0; index < items.size(); index++) {
-            System.out.println("  " + (index + 1) + ". " + items.get(index));
-        }
-    }
-
-    // ---------------------------------------------------------------- 4. view utang history
-
-    private void viewUtangHistory() throws StoreException {
-        while (true) {
-            ConsoleFormat.printHeading("View Utang History");
-            System.out.println("1. Show all");
-            System.out.println("2. Show unpaid");
-            System.out.println("3. Show paid");
-            System.out.println("4. Back");
-            int choice = input.readMenuChoice(HISTORY_MENU_BACK);
-            if (choice == HISTORY_MENU_BACK) {
-                return;
-            }
-            showUtangHistory(HistoryFilter.values()[choice - 1]);
-        }
-    }
-
-    // Prints the records (customer A-Z, then oldest date first), their payments and a summary.
-    private void showUtangHistory(HistoryFilter filter) {
-        ConsoleFormat.printHeading(filter.getTitle());
-        List<UtangTransaction> records = customers.getUtangHistory(filter);
-        if (records.isEmpty()) {
-            System.out.println(NO_RECORDS);
-            return;
-        }
-        System.out.println(UtangTransaction.TABLE_HEADER);
-        System.out.println(ConsoleFormat.underline(UtangTransaction.TABLE_HEADER));
-        for (UtangTransaction record : records) {
-            System.out.println(record.getHistoryRow());
-            printPayments(record);
-        }
-        printHistorySummary(records);
-    }
-
-    private void printPayments(UtangTransaction record) {
-        for (PaymentTransaction payment : record.getPayments()) {
-            System.out.println(String.format(Locale.US, "       - Payment #%d on %s: %s%s", payment.getNumber(),
-                    Validator.formatDate(payment.getDate()), Money.format(payment.getAmount()),
-                    payment.isUndone() ? "  [UNDONE]" : ""));
-        }
-    }
-
-    // Undone records are listed in "Show all" but never counted in the totals.
-    private void printHistorySummary(List<UtangTransaction> records) {
-        BigDecimal totalUtang = Money.ZERO;
-        BigDecimal totalPaid = Money.ZERO;
-        BigDecimal totalRemaining = Money.ZERO;
-        int undoneCount = 0;
-        for (UtangTransaction record : records) {
-            if (record.isUndone()) {
-                undoneCount++;
-                continue;
-            }
-            totalUtang = totalUtang.add(record.getTotalAmount());
-            totalPaid = totalPaid.add(record.getAmountPaid());
-            totalRemaining = totalRemaining.add(record.getRemaining());
-        }
         System.out.println();
-        String undoneNote = undoneCount == 0 ? "" : " (" + undoneCount + " undone, not included in totals)";
-        System.out.print(ConsoleFormat.detailLine("Records shown", records.size() + undoneNote));
-        System.out.print(ConsoleFormat.detailLine("Total utang", Money.format(totalUtang)));
-        System.out.print(ConsoleFormat.detailLine("Total paid", Money.format(totalPaid)));
-        System.out.print(ConsoleFormat.detailLine("Total remaining", Money.format(totalRemaining)));
+        System.out.println("New product: " + product);
+        if (!input.confirm("Save this product?")) {
+            printInfo("Cancelled. The product was not added.");
+            return;
+        }
+        inventory.addProduct(product);   // checks duplicates again and re-sorts with merge sort
+        printSuccess("\"" + product.getName() + "\" was added to the inventory.");
     }
 
-    // ---------------------------------------------------------------- 5. record utang payment
+    // =====================================================================
+    //  2. Search product
+    // =====================================================================
+
+    private void searchProduct() {
+        printHeading("SEARCH PRODUCT");
+        if (inventory.isEmpty()) {
+            printInfo("No records found. There are no products yet.");
+            return;
+        }
+        printCancelHint();
+        String keyword = input.readName("Enter a product name or code: ");
+
+        // 1. Exact name: BINARY SEARCH on the alphabetical list
+        Product exact = inventory.findByName(keyword);
+        if (exact != null) {
+            printInfo("Exact name match found using binary search.");
+            printProductTable(singleItemList(exact));
+            return;
+        }
+
+        // 2. Exact code: LINEAR SEARCH (the list is not sorted by code)
+        Product byCode = inventory.findByCode(keyword);
+        if (byCode != null) {
+            printInfo("Product code match found using linear search.");
+            printProductTable(singleItemList(byCode));
+            return;
+        }
+
+        // 3. Partial name: LINEAR SEARCH
+        List<Product> partial = inventory.searchPartial(keyword);
+        if (partial.isEmpty()) {
+            printInfo("No records found for \"" + keyword + "\".");
+        } else {
+            printInfo("No exact match. Products whose names contain \"" + keyword
+                    + "\" (linear search): " + partial.size());
+            printProductTable(partial);
+        }
+    }
+
+    // =====================================================================
+    //  3. Record cash sale
+    // =====================================================================
+
+    private void recordCashSale() throws StoreException {
+        printHeading("RECORD CASH SALE");
+        printCancelHint();
+
+        Product product = selectProduct();
+        if (product.getStock() == 0) {
+            throw new InsufficientStockException(product.getName(), 1, 0);
+        }
+        System.out.println("Selected: " + product);
+
+        // Ask for the quantity until the transaction is valid (enough stock)
+        CashSaleTransaction sale = null;
+        while (sale == null) {
+            int quantity = input.readWholeNumber("Quantity sold: ", 1, Product.MAX_STOCK);
+            try {
+                sale = new CashSaleTransaction(product, quantity, cashRegister);
+            } catch (InsufficientStockException e) {
+                printError(e.getMessage() + " Enter a smaller quantity, or X to cancel.");
+            }
+        }
+
+        System.out.println();
+        System.out.println("Cash sale: " + sale.getDetails() + " = " + Money.format(sale.getTotal()));
+        if (!input.confirm("Record this cash sale?")) {
+            printInfo("Cancelled. No records were changed.");
+            return;
+        }
+
+        sale.execute();          // checks again, then changes stock, total sold and cash sales
+        undoStack.push(sale);    // PUSH: the newest transaction goes on top of the stack
+        printSuccess("Cash sale recorded.");
+        System.out.println(sale.getReceipt());
+        printLowStockWarning(product);
+    }
+
+    // =====================================================================
+    //  4. Record utang
+    // =====================================================================
+
+    private void recordUtang() throws StoreException {
+        printHeading("RECORD UTANG");
+        if (inventory.isEmpty()) {
+            printInfo("There are no products to sell yet. Add a product first.");
+            return;
+        }
+        printCancelHint();
+
+        Customer customer = selectOrCreateCustomer();
+        boolean isNewCustomer = customerRecords.findByName(customer.getName()) == null;
+        if (isNewCustomer) {
+            System.out.println("Customer: " + customer.getName() + " (NEW - will be saved when the utang is recorded)");
+        } else {
+            System.out.println("Customer: " + customer.getName() + ", current balance " + Money.format(customer.getBalance()));
+        }
+
+        Product product = selectProduct();
+        if (product.getStock() == 0) {
+            throw new InsufficientStockException(product.getName(), 1, 0);
+        }
+        System.out.println("Selected: " + product);
+
+        UtangTransaction utang = null;
+        while (utang == null) {
+            int quantity = input.readWholeNumber("Quantity: ", 1, Product.MAX_STOCK);
+            try {
+                utang = new UtangTransaction(customer, product, quantity);
+            } catch (InsufficientStockException e) {
+                printError(e.getMessage() + " Enter a smaller quantity, or X to cancel.");
+            }
+        }
+
+        BigDecimal newBalance = customer.getBalance().add(utang.getTotal());
+        System.out.println();
+        System.out.println("Utang: " + utang.getDetails() + " = " + Money.format(utang.getTotal()));
+        System.out.println("The balance will become " + Money.format(newBalance) + ".");
+        if (!input.confirm("Record this utang?")) {
+            printInfo("Cancelled. No records were changed.");
+            return;
+        }
+
+        // A new customer is saved only now, after confirmation.
+        if (isNewCustomer) {
+            customerRecords.addCustomer(customer);
+        }
+        try {
+            utang.execute();
+        } catch (StoreException e) {
+            // ROLLBACK: the utang failed, so do not keep the customer created for it.
+            if (isNewCustomer) {
+                customerRecords.removeCustomer(customer);
+            }
+            throw e;
+        }
+        undoStack.push(utang);
+        printSuccess("Utang recorded" + (isNewCustomer ? " and new customer saved." : "."));
+        System.out.println(utang.getReceipt());
+        printLowStockWarning(product);
+    }
+
+    // =====================================================================
+    //  5. Record utang payment
+    // =====================================================================
 
     private void recordUtangPayment() throws StoreException {
-        ConsoleFormat.printHeading("Record Utang Payment");
+        printHeading("RECORD UTANG PAYMENT");
+        if (customerRecords.getCustomersWithUtang().isEmpty()) {
+            printInfo("No customer has an outstanding utang right now.");
+            return;
+        }
+        printCancelHint();
+
         Customer customer = selectExistingCustomer();
-        System.out.println(customer.getName() + "'s current balance: " + Money.format(customer.getBalance()));
-        List<UtangTransaction> unpaid = customer.requireUnpaidRecords();
-        printUnpaidRecords(unpaid);
-        UtangTransaction record = unpaid.get(input.readInt("Enter the number of the record to pay", unpaid.size()) - 1);
-        BigDecimal amount = input.readPaymentAmount("Enter payment amount in PHP (up to "
-                + Money.format(record.getRemaining()) + ")", record.getRemaining());
-        PaymentTransaction payment = new PaymentTransaction(LocalDate.now(), record, amount, ledger);
-        payment.checkCanExecute();
-        ConsoleFormat.printHeading("Payment Details");
-        System.out.print(payment.describe());
-        System.out.print(ConsoleFormat.detailLine("Remaining now", Money.format(record.getRemaining())));
-        System.out.print(ConsoleFormat.detailLine("Remaining after payment",
-                Money.format(record.getRemaining().subtract(amount))));
-        confirmAndSave(payment, "Save this payment?");
+        System.out.println("Customer: " + customer.getName() + ", outstanding balance " + Money.format(customer.getBalance()));
+        if (!customer.hasOutstandingUtang()) {
+            throw new StoreException(customer.getName() + " has no outstanding utang. Payment rejected.");
+        }
+
+        // Ask for the amount until it is a valid payment (not more than the balance)
+        PaymentTransaction payment = null;
+        while (payment == null) {
+            BigDecimal amount = input.readMoney("Amount paid in PHP: ", Money.ONE_CENTAVO, Money.MAX_AMOUNT);
+            try {
+                payment = new PaymentTransaction(customer, amount);
+            } catch (StoreException e) {
+                printError(e.getMessage() + " Enter a smaller amount, or X to cancel.");
+            }
+        }
+
+        BigDecimal newBalance = customer.getBalance().subtract(payment.getAmount());
+        System.out.println();
+        System.out.println("Payment of " + Money.format(payment.getAmount()) + " from " + customer.getName()
+                + ". The balance will become " + Money.format(newBalance) + ".");
+        if (!input.confirm("Record this payment?")) {
+            printInfo("Cancelled. No records were changed.");
+            return;
+        }
+
+        payment.execute();
+        undoStack.push(payment);
+        printSuccess(customer.hasOutstandingUtang()
+                ? "Payment recorded."
+                : "Payment recorded. " + customer.getName() + "'s utang is now FULLY PAID.");
+        System.out.println(payment.getReceipt());
     }
 
-    private void printUnpaidRecords(List<UtangTransaction> unpaid) {
-        System.out.println("Unpaid utang records:");
-        System.out.println("     " + UtangTransaction.TABLE_HEADER);
-        for (int index = 0; index < unpaid.size(); index++) {
-            System.out.println(String.format(Locale.US, "%3d. %s", index + 1, unpaid.get(index).getHistoryRow()));
+    // =====================================================================
+    //  6. Search customer
+    // =====================================================================
+
+    private void searchCustomer() {
+        printHeading("SEARCH CUSTOMER");
+        if (customerRecords.isEmpty()) {
+            printInfo("No records found. There are no customers yet.");
+            return;
+        }
+        printCancelHint();
+        String keyword = input.readName("Enter a customer name: ");
+
+        // 1. Exact name: BINARY SEARCH
+        Customer exact = customerRecords.findByName(keyword);
+        if (exact != null) {
+            printInfo("Exact match found using binary search.");
+            printCustomerDetails(exact);
+            return;
+        }
+
+        // 2. Partial name: LINEAR SEARCH
+        List<Customer> partial = customerRecords.searchPartial(keyword);
+        if (partial.isEmpty()) {
+            printInfo("No records found for \"" + keyword + "\".");
+            return;
+        }
+        printInfo("No exact match. Customers whose names contain \"" + keyword
+                + "\" (linear search): " + partial.size());
+        for (Customer c : partial) {
+            printCustomerDetails(c);
         }
     }
 
-    // ---------------------------------------------------------------- 6. display products sorted
+    // =====================================================================
+    //  7. Display products sorted (sub-menu)
+    // =====================================================================
 
-    // Every option sorts a COPY with merge sort; the master list always stays A-Z.
-    private void displayProductsSorted() throws StoreException {
+    private void displayProductsSorted() {
         while (true) {
-            ConsoleFormat.printHeading("Display Products Sorted");
-            System.out.println("1. Name (A-Z)");
-            System.out.println("2. Price (low to high)");
-            System.out.println("3. Stock (low to high)");
-            System.out.println("4. Best sellers (most sold first)");
-            System.out.println("5. Back");
-            int choice = input.readMenuChoice(SORT_MENU_BACK);
+            printHeading("DISPLAY PRODUCTS SORTED (merge sort)");
+            System.out.println("   1. By name (A to Z)");
+            System.out.println("   2. By price (lowest first)");
+            System.out.println("   3. By stock quantity (lowest first)");
+            System.out.println("   4. Best sellers (most sold first)");
+            System.out.println("   5. Back to main menu");
+            int choice = input.readMenuChoice("Choose an order (1-5): ", 1, 5);
+            if (choice == 5) {
+                return;
+            }
+
+            List<Product> sorted;
+            String title;
             switch (choice) {
-                case SORT_BY_NAME:
-                    printProductSection("Products by name (A-Z)", inventory.getSortedByName());
+                case 1:
+                    sorted = inventory.getSortedCopy(Algorithms.BY_NAME);
+                    title = "Products by name (A to Z)";
                     break;
-                case SORT_BY_PRICE:
-                    printProductSection("Products by price (low to high)", inventory.getSortedByPrice());
+                case 2:
+                    sorted = inventory.getSortedCopy(Inventory.BY_PRICE);
+                    title = "Products by price (lowest first; equal prices keep A-Z order)";
                     break;
-                case SORT_BY_STOCK:
-                    printProductSection("Products by stock (low to high)", inventory.getSortedByStock());
+                case 3:
+                    sorted = inventory.getSortedCopy(Inventory.BY_STOCK);
+                    title = "Products by stock quantity (lowest first)";
                     break;
-                case SORT_BY_BEST_SELLERS:
-                    printProductSection("Best sellers (most sold first)", inventory.getBestSellers());
-                    break;
-                case SORT_MENU_BACK:
-                    return;
                 default:
-                    throw new IllegalStateException("Sort choice was not validated: " + choice);
+                    sorted = inventory.getSortedCopy(Inventory.BY_TOTAL_SOLD_DESC);
+                    title = "Best sellers (most sold first)";
+                    break;
+            }
+
+            System.out.println();
+            System.out.println(title + ":");
+            printProductTable(sorted);
+            input.pause();
+        }
+    }
+
+    // =====================================================================
+    //  8. Low-stock alert
+    // =====================================================================
+
+    private void showLowStockAlert() {
+        printHeading("LOW-STOCK ALERT (" + LOW_STOCK_LIMIT + " pieces or fewer)");
+        List<Product> low = inventory.getLowStockProducts(LOW_STOCK_LIMIT);
+        if (low.isEmpty()) {
+            printInfo("No records found. Every product has more than " + LOW_STOCK_LIMIT + " pieces in stock.");
+            return;
+        }
+        System.out.println(low.size() + " product(s) need restocking, lowest stock first:");
+        printProductTable(low);
+    }
+
+    // =====================================================================
+    //  9. Reports
+    // =====================================================================
+
+    private void showReports() {
+        printHeading("REPORTS");
+        System.out.println("  Total cash sales (this session) : " + Money.format(cashRegister.getTotal()));
+        System.out.println("  Total outstanding utang         : " + Money.format(customerRecords.getTotalOutstanding()));
+
+        // Top 3 best sellers (merge sort by total sold, products with zero sales excluded)
+        System.out.println();
+        System.out.println("  TOP 3 BEST-SELLING PRODUCTS");
+        List<Product> best = inventory.getBestSellers(3);
+        if (best.isEmpty()) {
+            System.out.println("    No records found. No products have been sold yet.");
+        } else {
+            System.out.printf("    %-5s %-30s %10s%n", "Rank", "Product", "Qty sold");
+            for (int i = 0; i < best.size(); i++) {
+                System.out.printf("    %-5d %-30s %10d%n", i + 1, fit(best.get(i).getName(), 30), best.get(i).getTotalSold());
+            }
+            if (best.size() < 3) {
+                System.out.println("    (Only " + best.size() + " product(s) have sales so far.)");
+            }
+        }
+
+        // Customers with utang (merge sort by balance, highest first)
+        System.out.println();
+        System.out.println("  CUSTOMERS WITH OUTSTANDING UTANG (highest balance first)");
+        List<Customer> owing = customerRecords.getCustomersWithUtang();
+        if (owing.isEmpty()) {
+            System.out.println("    No records found. No customer has an outstanding utang.");
+        } else {
+            System.out.printf("    %-5s %-30s %16s%n", "No.", "Customer", "Balance");
+            for (int i = 0; i < owing.size(); i++) {
+                System.out.printf("    %-5d %-30s %16s%n", i + 1, fit(owing.get(i).getName(), 30),
+                        Money.format(owing.get(i).getBalance()));
             }
         }
     }
 
-    // ---------------------------------------------------------------- 7. low-stock alert
+    // =====================================================================
+    //  10. Undo last transaction (STACK)
+    // =====================================================================
 
-    private void showLowStockAlert() {
-        ConsoleFormat.printHeading("Low-Stock Alert (stock of " + Inventory.LOW_STOCK_LEVEL + " or less)");
-        List<Product> lowStock = inventory.getLowStockProducts();
-        if (lowStock.isEmpty()) {
-            System.out.println("No low-stock products. Every product has more than "
-                    + Inventory.LOW_STOCK_LEVEL + " in stock.");
-            return;
-        }
-        System.out.println(Product.TABLE_HEADER + "  Alert");
-        System.out.println(ConsoleFormat.underline(Product.TABLE_HEADER + "  Alert"));
-        for (Product product : lowStock) {
-            System.out.println(product.getSummaryLine() + "  " + (product.isOutOfStock() ? "OUT OF STOCK" : "LOW STOCK"));
-        }
-    }
-
-    // ---------------------------------------------------------------- 8. reports
-
-    private void showReports() {
-        ConsoleFormat.printHeading("Reports");
-        System.out.print(ConsoleFormat.detailLine("Cash sales (session)", Money.format(ledger.getCashSalesTotal())));
-        System.out.print(ConsoleFormat.detailLine("Utang payments collected",
-                Money.format(ledger.getPaymentsCollectedTotal())));
-        System.out.print(ConsoleFormat.detailLine("Total outstanding utang", Money.format(customers.getTotalOutstanding())));
-        System.out.print(ConsoleFormat.detailLine("Unpaid utang records",
-                String.valueOf(customers.countUtangRecords(HistoryFilter.UNPAID))));
-        System.out.print(ConsoleFormat.detailLine("Paid utang records",
-                String.valueOf(customers.countUtangRecords(HistoryFilter.PAID))));
-        printTopSellers();
-        printCustomersWithBalance();
-    }
-
-    private void printTopSellers() {
-        System.out.println();
-        System.out.println("Top " + TOP_SELLER_COUNT + " best-selling products (by quantity sold):");
-        List<Product> bestSellers = inventory.getBestSellers();
-        if (bestSellers.isEmpty()) {
-            System.out.println(NO_RECORDS);
-            return;
-        }
-        int shown = Math.min(TOP_SELLER_COUNT, bestSellers.size());
-        printProductTable(bestSellers.subList(0, shown));
-        if (shown < TOP_SELLER_COUNT) {
-            System.out.println(shown == 1 ? "Only 1 product has sales so far."
-                    : "Only " + shown + " products have sales so far.");
-        }
-    }
-
-    private void printCustomersWithBalance() {
-        System.out.println();
-        System.out.println("Customers with outstanding utang (highest balance first):");
-        List<Customer> withBalance = customers.getCustomersWithBalance();
-        if (withBalance.isEmpty()) {
-            System.out.println(NO_RECORDS);
-            return;
-        }
-        System.out.println(Customer.TABLE_HEADER);
-        System.out.println(ConsoleFormat.underline(Customer.TABLE_HEADER));
-        for (Customer customer : withBalance) {
-            System.out.println(customer.getSummaryLine());
-        }
-    }
-
-    // ---------------------------------------------------------------- 9. undo
-
-    // UNDO WORKFLOW: peek -> show -> confirm -> reverse -> pop. The stack is LIFO, so the most
-    // recently saved transaction is always the one undone, whatever its date.
+    /**
+     * Undo uses the stack's LIFO order:
+     *   1. PEEK at the top transaction (the most recent one) and show it.
+     *   2. Ask for confirmation.
+     *   3. Reverse it. Thanks to polymorphism, undo() runs the correct
+     *      reversal for a cash sale, an utang, or a payment.
+     *   4. POP it from the stack ONLY after the reversal succeeded.
+     * Cancelling, or a failed reversal, leaves everything unchanged.
+     */
     private void undoLastTransaction() throws StoreException {
-        ConsoleFormat.printHeading("Undo Last Transaction");
-        // Step 1: look at the top transaction WITHOUT removing it (throws if the stack is empty).
+        printHeading("UNDO LAST TRANSACTION");
         Transaction last = undoStack.peek();
-        System.out.println("Most recent transaction (" + undoStack.size() + " on the undo stack):");
-        System.out.print(last.describe());
-        // Step 2: ask first. "n" or /cancel leaves everything, including the stack, unchanged.
-        if (!input.readYesNo("Undo this transaction?")) {
-            throw new InputCancelledException();
-        }
-        // Step 3: POLYMORPHISM - reverse() runs the undo rules of the real subclass
-        // (cash sale, utang or payment). There is no if/switch on the type here.
-        // If a check fails it throws, and nothing (not even the stack) has changed.
-        last.reverse();
-        // Step 4: only after a successful reverse() is the transaction removed from the stack.
-        undoStack.pop();
-        ConsoleFormat.printOk("Transaction #" + last.getNumber() + " (" + last.getType().getLabel() + ") undone.");
-        System.out.print(last.describeCurrentState());
-    }
-
-    // ---------------------------------------------------------------- shared printing
-
-    private void printProductSection(String title, List<Product> products) {
-        ConsoleFormat.printHeading(title);
-        if (products.isEmpty()) {
-            System.out.println(NO_RECORDS);
+        if (last == null) {
+            printInfo("There is nothing to undo. The undo stack is empty.");
             return;
         }
-        printProductTable(products);
+
+        System.out.println("Most recent transaction (top of the stack):");
+        System.out.println("  " + last.getSummary());
+        if (!input.confirm("Undo this transaction?")) {
+            printInfo("Undo cancelled. Nothing was changed.");
+            return;
+        }
+
+        last.undo();        // throws StoreException if it cannot be reversed; the stack is untouched
+        undoStack.pop();    // removed only after a successful reversal
+        printSuccess("Transaction #" + last.getNumber() + " (" + last.getType().getLabel() + ") was undone.");
+        printInfo(last.getUndoResult());
+        printInfo(undoStack.isEmpty()
+                ? "The undo stack is now empty."
+                : undoStack.size() + " transaction(s) can still be undone.");
     }
 
-    private void printProductTable(List<Product> products) {
-        System.out.println(Product.TABLE_HEADER);
-        System.out.println(ConsoleFormat.underline(Product.TABLE_HEADER));
-        for (Product product : products) {
-            System.out.println(product.getSummaryLine());
+    // =====================================================================
+    //  11. Exit
+    // =====================================================================
+
+    private boolean confirmExit() {
+        System.out.println();
+        try {
+            return input.confirm("Exit the program? All changes from this session will be lost.");
+        } catch (InputCancelledException e) {
+            return false;
         }
     }
 
-    // ---------------------------------------------------------------- sample data
+    // =====================================================================
+    //  Selecting a product or customer
+    // =====================================================================
 
-    // SAMPLE DATA: 7 products and 3 customers with no utang. Nothing is saved to a file,
-    // so every change made during the session is lost when the program exits.
+    /**
+     * Asks for a product code or exact name until ONE product is identified.
+     *   - code        -> linear search
+     *   - exact name  -> binary search
+     *   - otherwise   -> partial matches (linear search); the operator must
+     *                    pick one by number before continuing
+     * Typing X cancels (InputCancelledException).
+     */
+    private Product selectProduct() {
+        while (true) {
+            String text = input.readName("Product code or exact name: ");
+
+            Product product = inventory.findByCode(text);
+            if (product == null) {
+                product = inventory.findByName(text);
+            }
+            if (product != null) {
+                return product;
+            }
+
+            List<Product> matches = inventory.searchPartial(text);
+            if (matches.isEmpty()) {
+                printError("No records found for \"" + text + "\". Try again, or type X to cancel.");
+                continue;
+            }
+
+            System.out.println("No exact match. Did you mean one of these?");
+            for (int i = 0; i < matches.size(); i++) {
+                System.out.printf("   %d. %s%n", i + 1, matches.get(i));
+            }
+            int pick = input.readWholeNumber("Choose a product (1-" + matches.size() + "): ", 1, matches.size());
+            return matches.get(pick - 1);
+        }
+    }
+
+    /**
+     * For RECORD UTANG: finds an existing customer, or creates a new one.
+     * If the name does not exist, the operator is asked whether to create it.
+     * The new customer is NOT saved here; it is saved only when the utang is
+     * confirmed (see recordUtang).
+     */
+    private Customer selectOrCreateCustomer() {
+        while (true) {
+            String name = input.readName("Customer name: ");
+
+            Customer existing = customerRecords.findByName(name);   // binary search, ignores case and spaces
+            if (existing != null) {
+                return existing;
+            }
+
+            List<Customer> matches = customerRecords.searchPartial(name);
+            if (!matches.isEmpty()) {
+                System.out.println("No exact match. Customers whose names contain \"" + name + "\":");
+                for (int i = 0; i < matches.size(); i++) {
+                    System.out.printf("   %d. %s%n", i + 1, matches.get(i));
+                }
+                int createOption = matches.size() + 1;
+                System.out.printf("   %d. Create a NEW customer named \"%s\"%n", createOption, name);
+                int pick = input.readWholeNumber("Choose (1-" + createOption + "): ", 1, createOption);
+                if (pick < createOption) {
+                    return matches.get(pick - 1);
+                }
+                return new Customer(name);
+            }
+
+            if (input.confirm("Customer \"" + name + "\" does not exist yet. Create this customer?")) {
+                return new Customer(name);
+            }
+            printInfo("Customer not created. Enter another name, or type X to cancel.");
+        }
+    }
+
+    /** For PAYMENT: finds an existing customer (exact or partial). Typing X cancels. */
+    private Customer selectExistingCustomer() {
+        while (true) {
+            String name = input.readName("Customer name: ");
+
+            Customer existing = customerRecords.findByName(name);
+            if (existing != null) {
+                return existing;
+            }
+
+            List<Customer> matches = customerRecords.searchPartial(name);
+            if (matches.isEmpty()) {
+                printError("No records found for \"" + name + "\". Try again, or type X to cancel.");
+                continue;
+            }
+            System.out.println("No exact match. Did you mean one of these?");
+            for (int i = 0; i < matches.size(); i++) {
+                System.out.printf("   %d. %s%n", i + 1, matches.get(i));
+            }
+            int pick = input.readWholeNumber("Choose a customer (1-" + matches.size() + "): ", 1, matches.size());
+            return matches.get(pick - 1);
+        }
+    }
+
+    // =====================================================================
+    //  Sample data (DEMO RECORDS ONLY - cleared when the program exits)
+    // =====================================================================
+
     private void loadSampleData() {
         try {
-            inventory.addProduct("P001", "Milo Sachet", new BigDecimal("9.00"), 30);
-            inventory.addProduct("P002", "Egg", new BigDecimal("10.00"), 4);
-            inventory.addProduct("P003", "Lucky Me Pancit Canton", new BigDecimal("16.00"), 25);
-            inventory.addProduct("P004", "Coke Sakto", new BigDecimal("15.00"), 12);
-            inventory.addProduct("P005", "Datu Puti Vinegar", new BigDecimal("22.00"), 8);
-            inventory.addProduct("P006", "Safeguard Shampoo Sachet", new BigDecimal("7.00"), 0);
-            inventory.addProduct("P007", "Safeguard Soap", new BigDecimal("38.00"), 3);
-            customers.addCustomer("Aling Nena");
-            customers.addCustomer("Mang Tonyo");
-            customers.addCustomer("Ate Lorna");
-        } catch (StoreException badSampleData) {
-            // The sample data is fixed in the code, so a failure here is a programmer mistake.
-            throw new IllegalStateException("Sample data is invalid: " + badSampleData.getMessage(), badSampleData);
+            //                          code    name                        price    stock
+            inventory.addProduct(sample("P001", "Milo Sachet",              "9.00",  40));
+            inventory.addProduct(sample("P002", "Egg",                      "10.00", 30));
+            inventory.addProduct(sample("P003", "Lucky Me Pancit Canton",   "16.00",  4));   // low
+            inventory.addProduct(sample("P004", "Kopiko Coffee Candy",      "1.00", 120));
+            inventory.addProduct(sample("P005", "Bear Brand Sachet",        "12.00",  2));   // low
+            inventory.addProduct(sample("P006", "Datu Puti Vinegar 200ml",  "12.00",  0));   // zero
+            inventory.addProduct(sample("P007", "Coke Mismo",               "20.00", 24));
+
+            customerRecords.addCustomer(new Customer("Aling Nena"));
+            customerRecords.addCustomer(new Customer("Mang Tonyo"));
+            customerRecords.addCustomer(new Customer("Ate Joy"));
+        } catch (DuplicateRecordException e) {
+            printError("Sample data problem: " + e.getMessage());
         }
-        System.out.println("Sample data loaded: " + inventory.size() + " products and "
-                + customers.size() + " customers.");
-        System.out.println("All changes are kept in memory only and are lost when you exit.");
-        System.out.println("Type " + Validator.CANCEL_COMMAND + " at any prompt inside an option to cancel it.");
+        System.out.println();
+        System.out.println("[SAMPLE DATA] Loaded " + inventory.size() + " demo products (codes P001-P007) and "
+                + customerRecords.size() + " demo customers with zero balances.");
+        System.out.println("[SAMPLE DATA] Records are kept in memory only and are cleared when you exit.");
+    }
+
+    private static Product sample(String code, String name, String price, int stock) {
+        return new Product(code, name, Money.of(price), stock);
+    }
+
+    // =====================================================================
+    //  Printing helpers
+    // =====================================================================
+
+    private void printProductTable(List<Product> products) {
+        if (products.isEmpty()) {
+            System.out.println("  No records found.");
+            return;
+        }
+        System.out.printf("  %-4s %-8s %-28s %14s %7s %6s  %s%n", "No.", "Code", "Product name", "Price", "Stock", "Sold", "Status");
+        System.out.println("  " + repeat('-', LINE_WIDTH - 2));
+        for (int i = 0; i < products.size(); i++) {
+            Product p = products.get(i);
+            System.out.printf("  %-4d %-8s %-28s %14s %7d %6d  %s%n", i + 1, p.getCode(), fit(p.getName(), 28),
+                    Money.format(p.getPrice()), p.getStock(), p.getTotalSold(), stockStatus(p));
+        }
+    }
+
+    private String stockStatus(Product p) {
+        if (p.getStock() == 0) {
+            return "OUT OF STOCK";
+        }
+        if (p.isLowStock(LOW_STOCK_LIMIT)) {
+            return "LOW";
+        }
+        return "OK";
+    }
+
+    /**
+     * Prints a customer's name, balance and full history. Each history row
+     * calls getBalanceEffect() and getHistoryDetails(): POLYMORPHISM picks the
+     * utang or payment version automatically.
+     */
+    private void printCustomerDetails(Customer customer) {
+        System.out.println();
+        System.out.println("  Customer : " + customer.getName());
+        System.out.println("  Balance  : " + Money.format(customer.getBalance())
+                + (customer.hasOutstandingUtang() ? "" : "  (no outstanding utang)"));
+        System.out.println("  History  :");
+
+        List<Transaction> history = customer.getHistory();
+        if (history.isEmpty()) {
+            System.out.println("    No records found.");
+            return;
+        }
+        System.out.printf("    %-5s %-17s %-8s %-28s %14s  %s%n", "No.", "Date and time", "Type", "Details", "Amount", "Status");
+        System.out.println("    " + repeat('-', LINE_WIDTH + 6));
+        for (Transaction t : history) {
+            BigDecimal effect = t.getBalanceEffect();
+            String sign = effect.signum() >= 0 ? "+" : "-";
+            System.out.printf("    %-5s %-17s %-8s %-28s %14s  %s%n", "#" + t.getNumber(), t.getRecordedAtText(),
+                    t.getType().getLabel(), fit(t.getHistoryDetails(), 28), sign + Money.format(effect.abs()), t.getStatus());
+        }
+    }
+
+    private void printLowStockWarning(Product product) {
+        if (product.getStock() == 0) {
+            printInfo("WARNING: " + product.getName() + " is now OUT OF STOCK.");
+        } else if (product.isLowStock(LOW_STOCK_LIMIT)) {
+            printInfo("WARNING: " + product.getName() + " is low on stock (" + product.getStock() + " left).");
+        }
+    }
+
+    private void printHeading(String title) {
+        System.out.println();
+        System.out.println(repeat('-', LINE_WIDTH));
+        System.out.println("  " + title);
+        System.out.println(repeat('-', LINE_WIDTH));
+    }
+
+    private void printCancelHint() {
+        System.out.println("(Type " + InputHelper.CANCEL_WORD + " at any prompt to cancel and return to the main menu.)");
+    }
+
+    private void printSuccess(String message) {
+        System.out.println("  [OK] " + message);
+    }
+
+    private void printInfo(String message) {
+        System.out.println("  [i] " + message);
+    }
+
+    private void printError(String message) {
+        System.out.println("  [ERROR] " + message);
+    }
+
+    private static List<Product> singleItemList(Product p) {
+        List<Product> list = new java.util.ArrayList<Product>();
+        list.add(p);
+        return list;
+    }
+
+    /** Shortens text that is too long for a table column. */
+    private static String fit(String text, int width) {
+        return text.length() <= width ? text : text.substring(0, width - 3) + "...";
+    }
+
+    /** Java 8 has no String.repeat(), so it is written here. */
+    private static String repeat(char c, int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    private static String center(String text) {
+        int left = Math.max(0, (LINE_WIDTH - text.length()) / 2);
+        return repeat(' ', left) + text;
     }
 }

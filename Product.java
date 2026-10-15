@@ -1,39 +1,56 @@
 import java.math.BigDecimal;
-import java.util.Locale;
-import java.util.Objects;
+import java.math.RoundingMode;
 
-// A product sold in the store: code, price, stock and total quantity sold.
-// Demonstrates INHERITANCE (extends Entity), ENCAPSULATION (private fields, no public setters)
-// and POLYMORPHISM (overrides getSummaryLine() and toString()).
-public class Product extends Entity {
-    private static final int CODE_WIDTH = 12;
-    private static final int NAME_WIDTH = 26;
-    private static final int MONEY_WIDTH = 14;
-    private static final int NUMBER_WIDTH = 8;
-    private static final String ROW_FORMAT = "%-" + CODE_WIDTH + "s %-" + NAME_WIDTH + "s %"
-            + MONEY_WIDTH + "s %" + NUMBER_WIDTH + "s %" + NUMBER_WIDTH + "s";
-    public static final String TABLE_HEADER =
-            String.format(Locale.US, ROW_FORMAT, "Code", "Name", "Price", "Stock", "Sold");
+/**
+ * A product sold in the sari-sari store.
+ *
+ * OOP - ENCAPSULATION:
+ *   All fields are PRIVATE. Other classes can READ them through getters, but
+ *   can only CHANGE them through methods that check the rules first:
+ *     - the price must be positive with at most two decimal places,
+ *     - the stock can never go below zero,
+ *     - you cannot sell more than what is on the shelf.
+ *   This way a Product object can never be in an invalid state.
+ *
+ * OOP - ABSTRACTION / POLYMORPHISM:
+ *   Implements the Nameable interface, so the same binary search and merge
+ *   sort used for customers also work for products.
+ */
+public class Product implements Nameable {
 
-    private final String code;
+    /** Highest stock quantity accepted for one product. */
+    public static final int MAX_STOCK = 1000000;
+
+    private final String code;   // the code never changes after creation
+    private String name;
     private BigDecimal price;
     private int stock;
     private int totalSold;
 
-    // Values must already be validated by Inventory.addProduct().
+    /**
+     * Creates a product with zero sales.
+     *
+     * @throws IllegalArgumentException if any value breaks the rules
+     */
     public Product(String code, String name, BigDecimal price, int stock) {
-        super(name);
-        this.code = Objects.requireNonNull(code, "code");
-        this.price = Objects.requireNonNull(price, "price");
-        if (stock < 0) {
-            throw new IllegalArgumentException("Stock cannot be negative.");
-        }
-        this.stock = stock;
+        this.code = requireValidCode(code);
+        this.name = requireValidName(name);
+        this.price = requireValidPrice(price);
+        this.stock = requireValidStock(stock);
         this.totalSold = 0;
     }
 
+    // =====================================================================
+    //  Getters (read-only access)
+    // =====================================================================
+
     public String getCode() {
         return code;
+    }
+
+    @Override
+    public String getName() {
+        return name;
     }
 
     public BigDecimal getPrice() {
@@ -48,100 +65,131 @@ public class Product extends Entity {
         return totalSold;
     }
 
-    // Returns true if there is no stock left.
-    public boolean isOutOfStock() {
-        return stock == 0;
+    /** True when the stock is at or below the limit (zero stock included). */
+    public boolean isLowStock(int limit) {
+        return stock <= limit;
     }
 
-    // Returns what the stock would be after selling this quantity (used for previews only).
-    public int getStockAfterSelling(int quantity) {
-        return stock - quantity;
-    }
+    // =====================================================================
+    //  Stock changes used by transactions
+    // =====================================================================
 
-    // Throws if the product cannot be sold at all.
-    public void checkInStock() throws InsufficientStockException {
-        if (isOutOfStock()) {
-            throw new InsufficientStockException(getName() + " is OUT OF STOCK.");
+    /**
+     * Takes items off the shelf for a cash sale or utang:
+     * stock goes DOWN and total sold goes UP.
+     *
+     * Everything is checked first, and both fields are changed only after
+     * all checks pass, so a failed sale changes nothing.
+     *
+     * @throws InsufficientStockException if there are not enough pieces
+     * @throws StoreException             if the quantity is invalid or the total would overflow
+     */
+    public void sell(int quantity) throws StoreException {
+        if (quantity <= 0) {
+            throw new StoreException("The quantity must be at least 1.");
         }
-    }
-
-    // Checks that this quantity can be sold. Changes nothing.
-    public void checkCanSell(int quantity) throws InsufficientStockException, ValidationException {
-        checkInStock();
         if (quantity > stock) {
-            throw new InsufficientStockException("Not enough stock for " + getName() + ". Requested: "
-                    + quantity + ", available: " + stock + ".");
+            throw new InsufficientStockException(name, quantity, stock);
         }
-        if ((long) totalSold + quantity > Integer.MAX_VALUE) {
-            throw new ValidationException("Total sold for " + getName() + " would become too large.");
+        int newTotalSold;
+        try {
+            newTotalSold = Math.addExact(totalSold, quantity);   // detects integer overflow
+        } catch (ArithmeticException e) {
+            throw new StoreException("The total sold for " + name + " is too large to record.");
         }
+        stock = stock - quantity;
+        totalSold = newTotalSold;
     }
 
-    // Checks that a sale of this quantity can be reversed. Changes nothing.
-    public void checkCanRestore(int quantity) throws UndoException {
-        if (quantity > totalSold) {
-            throw new UndoException("Cannot undo: total sold for " + getName() + " would become negative.");
-        }
-        if ((long) stock + quantity > Integer.MAX_VALUE) {
-            throw new UndoException("Cannot undo: stock for " + getName() + " would become too large.");
-        }
+    /** True if a sale of this quantity can be reversed (used by undo). */
+    public boolean canReverseSale(int quantity) {
+        return quantity > 0 && quantity <= totalSold && quantity <= MAX_STOCK - stock;
     }
 
-    @Override
-    public String getSummaryLine() {
-        return String.format(Locale.US, ROW_FORMAT, code, ConsoleFormat.fit(getName(), NAME_WIDTH),
-                Money.format(price), stockText(), String.valueOf(totalSold));
+    /**
+     * Puts items back on the shelf when a sale or utang is UNDONE:
+     * stock goes UP and total sold goes DOWN.
+     *
+     * @throws StoreException if the reversal would make the numbers invalid
+     */
+    public void reverseSale(int quantity) throws StoreException {
+        if (!canReverseSale(quantity)) {
+            throw new StoreException("Cannot return " + quantity + " piece(s) of " + name
+                    + " to stock: the recorded sales do not allow it.");
+        }
+        stock = stock + quantity;
+        totalSold = totalSold - quantity;
     }
 
+    // =====================================================================
+    //  Edits (used only by Inventory's edit methods)
+    // =====================================================================
+
+    /**
+     * Changes the name. Only Inventory.editProductName() should call this,
+     * because Inventory must also check uniqueness and re-sort its list.
+     * That is why it is package-private (no "public").
+     */
+    void setName(String newName) {
+        this.name = requireValidName(newName);
+    }
+
+    /** Changes the price after checking it. */
+    void setPrice(BigDecimal newPrice) {
+        this.price = requireValidPrice(newPrice);
+    }
+
+    /** Changes the stock quantity after checking it. */
+    void setStock(int newStock) {
+        this.stock = requireValidStock(newStock);
+    }
+
+    // =====================================================================
+    //  Validation helpers (private: they are internal details)
+    // =====================================================================
+
+    private static String requireValidCode(String code) {
+        String problem = TextRules.checkCode(code);
+        if (problem != null) {
+            throw new IllegalArgumentException(problem);
+        }
+        return TextRules.clean(code).toUpperCase();
+    }
+
+    private static String requireValidName(String name) {
+        String problem = TextRules.checkName(name);
+        if (problem != null) {
+            throw new IllegalArgumentException(problem);
+        }
+        return TextRules.clean(name);
+    }
+
+    private static BigDecimal requireValidPrice(BigDecimal price) {
+        if (!Money.isPositive(price)) {
+            throw new IllegalArgumentException("The price must be greater than zero.");
+        }
+        if (!Money.hasAtMostTwoDecimals(price)) {
+            throw new IllegalArgumentException("The price can have at most two decimal places.");
+        }
+        if (price.compareTo(Money.MAX_AMOUNT) > 0) {
+            throw new IllegalArgumentException("The price cannot be more than " + Money.format(Money.MAX_AMOUNT) + ".");
+        }
+        return price.setScale(2, RoundingMode.UNNECESSARY);
+    }
+
+    private static int requireValidStock(int stock) {
+        if (stock < 0) {
+            throw new IllegalArgumentException("The stock cannot be negative.");
+        }
+        if (stock > MAX_STOCK) {
+            throw new IllegalArgumentException("The stock cannot be more than " + MAX_STOCK + ".");
+        }
+        return stock;
+    }
+
+    /** OOP - POLYMORPHISM: overrides Object.toString() with a readable description. */
     @Override
     public String toString() {
-        return code + " - " + getName() + " (" + Money.format(price) + ", stock " + stock + ")";
-    }
-
-    // Package-private (no modifier): only transactions call this, and only after checkCanSell().
-    // New values are computed first and then assigned together.
-    void recordSale(int quantity) {
-        if (quantity <= 0 || quantity > stock) {
-            throw new IllegalStateException("recordSale() called without a successful checkCanSell().");
-        }
-        int newStock = stock - quantity;
-        int newTotalSold = Math.addExact(totalSold, quantity);
-        stock = newStock;
-        totalSold = newTotalSold;
-    }
-
-    // Package-private: only transactions call this, and only after checkCanRestore().
-    void restoreSale(int quantity) {
-        if (quantity <= 0 || quantity > totalSold) {
-            throw new IllegalStateException("restoreSale() called without a successful checkCanRestore().");
-        }
-        int newStock = Math.addExact(stock, quantity);
-        int newTotalSold = totalSold - quantity;
-        stock = newStock;
-        totalSold = newTotalSold;
-    }
-
-    // Package-private on purpose: renaming a product also needs a uniqueness check and a re-sort
-    // of the master list, otherwise binary search would break. Only Inventory.renameProduct()
-    // does both, so it is the only caller.
-    void setName(String newName) {
-        changeName(newName);
-    }
-
-    // Package-private: only Inventory.editPrice() calls this, after validating the price.
-    void setPrice(BigDecimal newPrice) {
-        this.price = Objects.requireNonNull(newPrice, "newPrice");
-    }
-
-    // Package-private: only Inventory.editStock() calls this, after validating the stock.
-    void setStock(int newStock) {
-        if (newStock < 0) {
-            throw new IllegalArgumentException("Stock cannot be negative.");
-        }
-        this.stock = newStock;
-    }
-
-    private String stockText() {
-        return isOutOfStock() ? "0 (OUT)" : String.valueOf(stock);
+        return code + " - " + name + " (" + Money.format(price) + ", stock " + stock + ")";
     }
 }
