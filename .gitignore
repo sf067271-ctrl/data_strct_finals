@@ -1,2 +1,3 @@
-# Compiled Java classes
+# Compiled Java files
 *.class
+bin/

@@ -1,121 +1,190 @@
-import java.time.LocalDate;
-import java.util.Objects;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
-// Abstract parent of every transaction. Holds the shared data (number, date, type, undone flag)
-// and the TEMPLATE for execute() and reverse(): always validate first, then apply.
-// Demonstrates ABSTRACTION (abstract steps), INHERITANCE (three subclasses) and
-// POLYMORPHISM (Main calls execute() and reverse() without knowing the subclass).
-public abstract class Transaction implements Reversible {
-    // The number the next saved transaction will get. It only moves forward after a successful
-    // execute(), so a cancelled transaction does not leave a gap in the numbering.
-    private static int nextNumber = 1;
+/**
+ * A completed (or about-to-be-completed) store transaction.
+ *
+ * OOP - ABSTRACTION (abstract class):
+ *   "Transaction" by itself is an idea, not something you can record. You can
+ *   only create a CashSaleTransaction, UtangTransaction or PaymentTransaction.
+ *   This class defines WHAT every transaction can do (execute, undo, describe
+ *   itself) and leaves HOW to each subclass through abstract methods.
+ *
+ * OOP - INHERITANCE:
+ *
+ *       Transaction (abstract)
+ *         ├── ProductTransaction (abstract)   product, quantity, unit price, total
+ *         │     ├── CashSaleTransaction
+ *         │     └── UtangTransaction
+ *         └── PaymentTransaction
+ *
+ *   Shared fields and logic (number, type, date, undo status) are written
+ *   once here and inherited by all subclasses.
+ *
+ * OOP - POLYMORPHISM:
+ *   Main and UndoStack only work with the type "Transaction". When Main calls
+ *   transaction.undo(), Java automatically runs the correct reverseChanges()
+ *   of the actual object: restoring stock for a sale, lowering a balance for
+ *   an utang, or raising a balance for a payment. No if/else on the type is
+ *   needed.
+ *
+ * TEMPLATE METHOD:
+ *   execute() and undo() are "final": every transaction follows the same safe
+ *   steps (check first, then change), while the subclass fills in the details.
+ */
+public abstract class Transaction {
 
-    private final int number;
-    private final LocalDate date;
+    private static final DateTimeFormatter DATE_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    private static int nextNumber = 1;   // shared counter for transaction numbers
+
     private final TransactionType type;
+    private int number;                  // assigned when the transaction is recorded
+    private LocalDateTime recordedAt;
     private boolean executed;
     private boolean undone;
 
-    protected Transaction(TransactionType type, LocalDate date) {
-        this.type = Objects.requireNonNull(type, "type");
-        this.date = Objects.requireNonNull(date, "date");
-        this.number = nextNumber;
+    protected Transaction(TransactionType type) {
+        if (type == null) {
+            throw new IllegalArgumentException("A transaction type is required.");
+        }
+        this.type = type;
     }
 
-    // TEMPLATE METHOD for saving. It is final so no subclass can skip a step.
-    @Override
+    // =====================================================================
+    //  Template methods: the same safe steps for every transaction
+    // =====================================================================
+
+    /**
+     * Records the transaction.
+     *   1. validate()     - checks EVERYTHING first; throws if something is wrong
+     *   2. applyChanges() - only then changes stock, balances and totals
+     * If step 1 fails, nothing has been changed.
+     *
+     * @throws StoreException if the transaction is not allowed
+     */
     public final void execute() throws StoreException {
-        // Step 1: a transaction can be saved only once, and only the newest one may be saved.
         if (executed) {
-            throw new IllegalStateException("Transaction #" + number + " was already saved.");
+            throw new StoreException("This transaction has already been recorded.");
         }
-        if (number != nextNumber) {
-            throw new IllegalStateException("Transaction #" + number + " is out of date.");
-        }
-        // Step 2: run every check. If one fails it throws, and NOTHING has been changed yet.
-        validateExecution();
-        // Step 3: all checks passed, so apply the change. applyExecution() never fails.
-        applyExecution();
-        // Step 4: remember that it is saved and reserve the next transaction number.
+        validate();
+        applyChanges();
         executed = true;
+        number = nextNumber;
         nextNumber++;
+        recordedAt = LocalDateTime.now();
     }
 
-    // TEMPLATE METHOD for undo. It is final so no subclass can skip a step.
-    @Override
-    public final void reverse() throws StoreException {
-        // Step 1: only a saved transaction that is not yet undone can be undone.
+    /**
+     * Reverses the transaction. reverseChanges() also checks first and only
+     * then changes anything, so a failed undo leaves everything as it was.
+     * The transaction stays in the customer's history, marked UNDONE.
+     *
+     * @throws StoreException if it was never recorded, was already undone,
+     *                        or cannot be reversed safely
+     */
+    public final void undo() throws StoreException {
         if (!executed) {
-            throw new IllegalStateException("Transaction #" + number + " was never saved.");
+            throw new StoreException("This transaction was never recorded, so it cannot be undone.");
         }
         if (undone) {
-            throw new UndoException("Transaction #" + number + " is already undone.");
+            throw new StoreException("Transaction #" + number + " has already been undone.");
         }
-        // Step 2: run every check first. If one fails, nothing has been changed.
-        validateReversal();
-        // Step 3: all checks passed, so undo the change. applyReversal() never fails.
-        applyReversal();
-        // Step 4: this is the ONLY place where the undone flag changes.
+        reverseChanges();
         undone = true;
     }
 
-    // Runs the save checks without changing anything, so problems show before the operator confirms.
-    public final void checkCanExecute() throws StoreException {
-        validateExecution();
+    // =====================================================================
+    //  Abstract methods: each subclass decides HOW
+    // =====================================================================
+
+    /** Checks that the transaction can be recorded right now. */
+    protected abstract void validate() throws StoreException;
+
+    /** Changes the records. Called only after validate() succeeds. */
+    protected abstract void applyChanges() throws StoreException;
+
+    /** Undoes applyChanges(), using the values stored in this transaction. */
+    protected abstract void reverseChanges() throws StoreException;
+
+    /** The money involved: sale total, utang total, or payment amount. */
+    public abstract BigDecimal getAmount();
+
+    /** Short description, e.g. "3 x Milo Sachet @ PHP 9.00". */
+    public abstract String getDetails();
+
+    /**
+     * Description used in a customer's history table, where the customer's
+     * name is already shown above. By default the same as getDetails();
+     * subclasses may OVERRIDE it with a shorter text.
+     */
+    public String getHistoryDetails() {
+        return getDetails();
     }
 
-    @Override
-    public boolean isUndone() {
-        return undone;
+    /** Lines of a readable receipt, shown after recording. */
+    public abstract String getReceipt();
+
+    /** What changed after an undo, e.g. "Milo Sachet stock is back to 40." */
+    public abstract String getUndoResult();
+
+    /**
+     * How this transaction changes a customer's balance:
+     * positive for utang, negative for payment, zero otherwise.
+     * Subclasses OVERRIDE this (polymorphism); the default is zero.
+     */
+    public BigDecimal getBalanceEffect() {
+        return Money.ZERO;
     }
 
-    public boolean isExecuted() {
-        return executed;
+    // =====================================================================
+    //  Common getters
+    // =====================================================================
+
+    public TransactionType getType() {
+        return type;
     }
 
     public int getNumber() {
         return number;
     }
 
-    public LocalDate getDate() {
-        return date;
+    public boolean isUndone() {
+        return undone;
     }
 
-    public TransactionType getType() {
-        return type;
+    /** Active = recorded and not undone. Only active transactions go on the undo stack. */
+    public boolean isActive() {
+        return executed && !undone;
     }
 
-    // Returns PENDING (not saved yet), SAVED or UNDONE.
-    public String getStatusLabel() {
-        if (undone) {
-            return "UNDONE";
+    public String getStatus() {
+        if (!executed) {
+            return "NOT RECORDED";
         }
-        return executed ? "SAVED" : "PENDING (not saved yet)";
+        return undone ? "UNDONE" : "ACTIVE";
     }
 
-    // Returns the full details of this transaction, one item per line.
-    public abstract String describe();
+    public String getRecordedAtText() {
+        return recordedAt == null ? "-" : recordedAt.format(DATE_FORMAT);
+    }
 
-    // Returns the live values this transaction affects (stock, balance, remaining amount).
-    public abstract String describeCurrentState();
+    /** One-line summary, e.g. "#3 Payment | Payment from Aling Nena | PHP 10.00 | 2026-10-15 13:05". */
+    public String getSummary() {
+        return "#" + number + " " + type.getLabel() + " | " + getDetails() + " | "
+                + Money.format(getAmount()) + " | " + getRecordedAtText();
+    }
 
-    // Checks that saving is allowed. Must throw a StoreException on any problem and change nothing.
-    protected abstract void validateExecution() throws StoreException;
+    /** Formats one receipt line, e.g. "  Quantity        : 3". Used by subclasses. */
+    protected static String receiptLine(String label, String value) {
+        return String.format("  %-16s: %s%n", label, value);
+    }
 
-    // Applies the change. Called only after validateExecution() passed, so it must not fail.
-    protected abstract void applyExecution();
-
-    // Checks that undo is allowed. Must throw a StoreException on any problem and change nothing.
-    protected abstract void validateReversal() throws StoreException;
-
-    // Undoes the change. Called only after validateReversal() passed, so it must not fail.
-    protected abstract void applyReversal();
-
-    // Shared first lines of describe(), used by every subclass.
-    protected String describeHeader() {
-        return ConsoleFormat.detailLine("Transaction no.", String.valueOf(number))
-                + ConsoleFormat.detailLine("Date", Validator.formatDate(date))
-                + ConsoleFormat.detailLine("Type", type.getLabel())
-                + ConsoleFormat.detailLine("Transaction status", getStatusLabel());
+    /** OOP - POLYMORPHISM: overrides Object.toString(). */
+    @Override
+    public String toString() {
+        return getSummary() + " [" + getStatus() + "]";
     }
 }

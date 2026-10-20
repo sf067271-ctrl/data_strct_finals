@@ -1,9 +1,11 @@
-// The three kinds of transactions, with a readable label for the screen.
-// Demonstrates ENCAPSULATION: each constant carries its own label.
+/**
+ * The three kinds of transaction that can be recorded and undone.
+ */
 public enum TransactionType {
+
     CASH_SALE("Cash sale"),
     UTANG("Utang"),
-    PAYMENT("Utang payment");
+    PAYMENT("Payment");
 
     private final String label;
 
@@ -11,7 +13,13 @@ public enum TransactionType {
         this.label = label;
     }
 
+    /** A readable name for tables and receipts, e.g. "Cash sale". */
     public String getLabel() {
+        return label;
+    }
+
+    @Override
+    public String toString() {
         return label;
     }
 }
