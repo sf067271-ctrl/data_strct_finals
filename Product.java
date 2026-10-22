@@ -101,6 +101,22 @@ public class Product implements Nameable {
         totalSold = newTotalSold;
     }
 
+    /** Adds delivered pieces without changing the total sold. */
+    public void addStock(int quantity) throws StoreException {
+        if (quantity <= 0 || quantity > MAX_STOCK - stock) {
+            throw new StoreException("Quantity received must be from 1 to " + (MAX_STOCK - stock) + ".");
+        }
+        stock += quantity;
+    }
+
+    /** Removes a previously recorded delivery when it is undone. */
+    public void reverseRestock(int quantity) throws StoreException {
+        if (quantity <= 0 || quantity > stock) {
+            throw new StoreException("Cannot undo restock: there are not enough pieces in stock.");
+        }
+        stock -= quantity;
+    }
+
     /** True if a sale of this quantity can be reversed (used by undo). */
     public boolean canReverseSale(int quantity) {
         return quantity > 0 && quantity <= totalSold && quantity <= MAX_STOCK - stock;

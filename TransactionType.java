@@ -1,11 +1,12 @@
 /**
- * The three kinds of transaction that can be recorded and undone.
+ * The kinds of transaction that can be recorded and undone.
  */
 public enum TransactionType {
 
     CASH_SALE("Cash sale"),
     UTANG("Utang"),
-    PAYMENT("Payment");
+    PAYMENT("Payment"),
+    RESTOCK("Restock");
 
     private final String label;
 

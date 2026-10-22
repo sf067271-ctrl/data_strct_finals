@@ -55,7 +55,7 @@ public class Main {
         while (running) {
             try {
                 printMainMenu();
-                int choice = input.readMenuChoice("Enter your choice (1-11): ", 1, 11);
+                int choice = input.readMenuChoice("Enter your choice (1-12): ", 1, 12);
                 running = handleMenuChoice(choice);
             } catch (EndOfInputException e) {
                 System.out.println();
@@ -122,6 +122,9 @@ public class Main {
                     }
                     pauseAfter = false;
                     break;
+                case 12:
+                    restockProduct();
+                    break;
                 default:
                     printError("Unknown menu option.");
                     break;
@@ -157,7 +160,7 @@ public class Main {
         System.out.println("   3. Record cash sale                9. Reports");
         System.out.println("   4. Record utang                   10. Undo last transaction");
         System.out.println("   5. Record utang payment           11. Exit");
-        System.out.println("   6. Search customer");
+        System.out.println("   6. Search customer               12. Restock product");
         System.out.println(repeat('-', LINE_WIDTH));
         System.out.println("   Products: " + inventory.size()
                 + "   |   Customers: " + customerRecords.size()
@@ -482,6 +485,34 @@ public class Main {
     // =====================================================================
     //  8. Low-stock alert
     // =====================================================================
+
+    private void restockProduct() throws StoreException {
+        printHeading("RESTOCK PRODUCT");
+        if (inventory.isEmpty()) {
+            printInfo("There are no products yet. Add a product first.");
+            return;
+        }
+        printCancelHint();
+        Product product = selectProduct();
+        System.out.println("Selected: " + product);
+        int capacity = Product.MAX_STOCK - product.getStock();
+        if (capacity == 0) {
+            printInfo("This product is already at the stock limit of " + Product.MAX_STOCK + ".");
+            return;
+        }
+        int quantity = input.readWholeNumber("Quantity received (1-" + capacity + "): ", 1, capacity);
+        RestockTransaction restock = new RestockTransaction(product, quantity);
+        System.out.println("Stock: " + product.getStock() + " + " + quantity
+                + " = " + (product.getStock() + quantity));
+        if (!input.confirm("Record this restock?")) {
+            printInfo("Cancelled. No records were changed.");
+            return;
+        }
+        restock.execute();
+        undoStack.push(restock);
+        printSuccess("Restock recorded. " + product.getName() + " stock is now " + product.getStock() + ".");
+        printLowStockWarning(product);
+    }
 
     private void showLowStockAlert() {
         printHeading("LOW-STOCK ALERT (" + LOW_STOCK_LIMIT + " pieces or fewer)");
