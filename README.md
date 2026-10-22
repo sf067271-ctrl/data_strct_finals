@@ -78,8 +78,9 @@ order (required by binary search). Other orders are made on sorted copies.
 - Blank, too long, or invalid names and codes are rejected. Names may contain
   spaces, apostrophes and hyphens. Duplicates are checked ignoring upper/lower
   case and extra spaces.
-- Whole numbers: letters, decimals, negative values and numbers too large
-  for an `int` are rejected.
+- Whole numbers (including menu selections): letters, decimals, negative values,
+  leading zeros (e.g. `01`) and numbers too large for an `int` are rejected.
+  A single `0` is accepted when the prompt's range allows it.
 - Money uses `BigDecimal`, built from validated text. Negative amounts, NaN,
   Infinity, scientific notation (`1e3`), commas and more than two decimal
   places are rejected.
