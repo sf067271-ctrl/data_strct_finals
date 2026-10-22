@@ -1,3 +1,5 @@
+package sarisari.exceptions;
+
 /**
  * Base class for every BUSINESS-RULE error in the store, for example
  * "not enough stock" or "payment is bigger than the balance".

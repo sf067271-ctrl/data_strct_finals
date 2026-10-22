@@ -1,3 +1,5 @@
+package sarisari.exceptions;
+
 /**
  * Thrown by InputHelper when there is no more input to read (for example,
  * the terminal was closed or Ctrl+Z / Ctrl+D was pressed).

@@ -1,3 +1,5 @@
+package sarisari.validators;
+
 /**
  * The rules for names and product codes, kept in ONE place so the input
  * screens and the Product/Customer classes always agree.

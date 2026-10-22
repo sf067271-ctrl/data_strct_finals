@@ -1,3 +1,10 @@
+package sarisari.transactions;
+
+import sarisari.exceptions.StoreException;
+import sarisari.models.CashRegister;
+import sarisari.models.Product;
+import sarisari.utils.Money;
+
 /**
  * A sale paid in cash.
  *

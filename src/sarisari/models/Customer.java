@@ -1,6 +1,13 @@
+package sarisari.models;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+
+import sarisari.exceptions.StoreException;
+import sarisari.transactions.Transaction;
+import sarisari.utils.Money;
+import sarisari.validators.TextRules;
 
 /**
  * A customer who may buy on credit (utang).
@@ -56,11 +63,12 @@ public class Customer implements Nameable {
     }
 
     // =====================================================================
-    //  Changes made by transactions (package-private: not for the menus)
+    //  Changes made by transactions (UtangTransaction, PaymentTransaction).
+    //  Main never calls these directly; each one checks the rules first.
     // =====================================================================
 
     /** Increases the balance (utang recorded, or a payment undone). */
-    void addDebt(BigDecimal amount) {
+    public void addDebt(BigDecimal amount) {
         if (!Money.isPositive(amount)) {
             throw new IllegalArgumentException("The amount added to a balance must be greater than zero.");
         }
@@ -72,7 +80,7 @@ public class Customer implements Nameable {
      *
      * @throws StoreException if the amount is bigger than the balance
      */
-    void reduceDebt(BigDecimal amount) throws StoreException {
+    public void reduceDebt(BigDecimal amount) throws StoreException {
         if (!Money.isPositive(amount)) {
             throw new StoreException("The amount must be greater than zero.");
         }
@@ -84,7 +92,7 @@ public class Customer implements Nameable {
     }
 
     /** Adds an utang or payment to the end of the history. */
-    void addHistory(Transaction transaction) {
+    public void addHistory(Transaction transaction) {
         if (transaction == null) {
             throw new IllegalArgumentException("A history entry cannot be empty.");
         }

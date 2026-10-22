@@ -1,4 +1,8 @@
+package sarisari.datastructures;
+
 import java.util.Stack;
+
+import sarisari.transactions.Transaction;
 
 /**
  * The undo stack.

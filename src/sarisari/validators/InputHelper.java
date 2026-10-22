@@ -1,5 +1,11 @@
+package sarisari.validators;
+
 import java.math.BigDecimal;
 import java.util.Scanner;
+
+import sarisari.exceptions.EndOfInputException;
+import sarisari.exceptions.InputCancelledException;
+import sarisari.utils.Money;
 
 /**
  * Reads and VALIDATES everything the operator types.

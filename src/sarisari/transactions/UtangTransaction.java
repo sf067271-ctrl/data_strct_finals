@@ -1,4 +1,11 @@
+package sarisari.transactions;
+
 import java.math.BigDecimal;
+
+import sarisari.exceptions.StoreException;
+import sarisari.models.Customer;
+import sarisari.models.Product;
+import sarisari.utils.Money;
 
 /**
  * A sale on credit (utang): the customer takes the item now and pays later.

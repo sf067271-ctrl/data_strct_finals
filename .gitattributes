@@ -1,0 +1,3 @@
+# Keep Windows and macOS/Linux run scripts working on every computer
+*.bat text eol=crlf
+*.sh text eol=lf

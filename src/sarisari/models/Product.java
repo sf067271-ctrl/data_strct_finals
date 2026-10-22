@@ -1,5 +1,12 @@
+package sarisari.models;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+
+import sarisari.exceptions.InsufficientStockException;
+import sarisari.exceptions.StoreException;
+import sarisari.utils.Money;
+import sarisari.validators.TextRules;
 
 /**
  * A product sold in the sari-sari store.
@@ -144,19 +151,18 @@ public class Product implements Nameable {
     /**
      * Changes the name. Only Inventory.editProductName() should call this,
      * because Inventory must also check uniqueness and re-sort its list.
-     * That is why it is package-private (no "public").
      */
-    void setName(String newName) {
+    public void setName(String newName) {
         this.name = requireValidName(newName);
     }
 
-    /** Changes the price after checking it. */
-    void setPrice(BigDecimal newPrice) {
+    /** Changes the price after checking it. Called by Inventory.editProductPrice(). */
+    public void setPrice(BigDecimal newPrice) {
         this.price = requireValidPrice(newPrice);
     }
 
-    /** Changes the stock quantity after checking it. */
-    void setStock(int newStock) {
+    /** Changes the stock quantity after checking it. Called by Inventory.editProductStock(). */
+    public void setStock(int newStock) {
         this.stock = requireValidStock(newStock);
     }
 

@@ -1,7 +1,15 @@
+package sarisari.datastructures;
+
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+
+import sarisari.algorithms.Algorithms;
+import sarisari.exceptions.DuplicateRecordException;
+import sarisari.exceptions.StoreException;
+import sarisari.models.Product;
+import sarisari.validators.TextRules;
 
 /**
  * Stores and manages all products.

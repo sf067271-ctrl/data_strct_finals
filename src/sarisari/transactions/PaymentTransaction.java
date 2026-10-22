@@ -1,4 +1,10 @@
+package sarisari.transactions;
+
 import java.math.BigDecimal;
+
+import sarisari.exceptions.StoreException;
+import sarisari.models.Customer;
+import sarisari.utils.Money;
 
 /**
  * A customer paying part or all of their utang.

@@ -2,6 +2,26 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Scanner;
 
+import sarisari.algorithms.Algorithms;
+import sarisari.datastructures.CustomerRecords;
+import sarisari.datastructures.Inventory;
+import sarisari.datastructures.UndoStack;
+import sarisari.exceptions.DuplicateRecordException;
+import sarisari.exceptions.EndOfInputException;
+import sarisari.exceptions.InputCancelledException;
+import sarisari.exceptions.InsufficientStockException;
+import sarisari.exceptions.StoreException;
+import sarisari.models.CashRegister;
+import sarisari.models.Customer;
+import sarisari.models.Product;
+import sarisari.transactions.CashSaleTransaction;
+import sarisari.transactions.PaymentTransaction;
+import sarisari.transactions.RestockTransaction;
+import sarisari.transactions.Transaction;
+import sarisari.transactions.UtangTransaction;
+import sarisari.utils.Money;
+import sarisari.validators.InputHelper;
+
 /**
  * SARI-SARI STORE DEBT AND STOCK MANAGEMENT SYSTEM
  *
@@ -18,8 +38,9 @@ import java.util.Scanner;
  * All data is kept in memory (ArrayLists). Sample data is loaded at startup
  * and everything is discarded when the program exits.
  *
- * Compile:  javac *.java
- * Run:      java Main
+ * Compile:  javac -d bin -sourcepath src src/Main.java   (from the project folder)
+ * Run:      java -cp bin Main
+ * Or double-click run.bat (Windows) / run "sh run.sh" (macOS, Linux).
  */
 public class Main {
 
