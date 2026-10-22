@@ -1,3 +1,5 @@
+package sarisari.exceptions;
+
 /**
  * Thrown by InputHelper when the operator types X to cancel.
  *

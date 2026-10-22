@@ -1,21 +1,83 @@
 # Sari-Sari Store Debt and Stock Management System
 
 A terminal-based Java application (Java 8 or newer, standard library only)
-for recording a sari-sari store's products, cash sales, utang (credit) and
-utang payments, with undo.
+for recording a sari-sari store's products, cash sales, utang (credit),
+utang payments and restocks, with undo.
 
 ## Compile and run
 
-Open a terminal in this folder:
+**Easiest:** on Windows, double-click `run.bat`. On macOS or Linux, open a
+terminal in this folder and type `sh run.sh`.
+
+**By hand:** open a terminal in this folder and type:
 
 ```
-javac *.java
-java Main
+javac -d bin -sourcepath src src/Main.java
+java -cp bin Main
 ```
+
+The first line compiles everything into the `bin` folder (it is ignored by
+Git); the second starts the program.
 
 **In VS Code:** choose File > Open Folder and select this folder. Then
-open `Main.java` and click **Run** (or press F5 and pick
+open `src/Main.java` and click **Run** (or press F5 and pick
 *Run Sari-Sari Store System*). Type your answers in the **TERMINAL** panel.
+
+## Project structure
+
+All Java code is in `src`. `Main.java` is the starting point; everything
+else is grouped by what it does, one folder (Java package) per kind of file.
+
+```
+src/
+├── Main.java                         Start here: the menu, the 12 options, sample data, printing
+└── sarisari/
+    ├── models/                       The things the store keeps track of
+    │   ├── Product.java              Code, name, price, stock, total sold
+    │   ├── Customer.java             Name, utang balance, history
+    │   ├── CashRegister.java         Cash sales total for this session
+    │   └── Nameable.java             "Has a name" interface used by search and sort
+    ├── datastructures/               Where the records are stored
+    │   ├── Inventory.java            ArrayList of all products, kept A-Z
+    │   ├── CustomerRecords.java      ArrayList of all customers, kept A-Z
+    │   └── UndoStack.java            Stack (LIFO) of transactions that can be undone
+    ├── algorithms/
+    │   └── Algorithms.java           Binary search, linear search, merge sort
+    ├── transactions/                 Everything that can be recorded and undone
+    │   ├── Transaction.java          Base class: record, undo, number, time
+    │   ├── TransactionType.java      Cash sale, Utang, Payment, Restock
+    │   ├── ProductTransaction.java   Shared parent of cash sale and utang
+    │   ├── CashSaleTransaction.java
+    │   ├── UtangTransaction.java
+    │   ├── PaymentTransaction.java
+    │   └── RestockTransaction.java
+    ├── validators/                   Checks for everything the user types
+    │   ├── InputHelper.java          Reads input: numbers, money, yes/no, cancel with X
+    │   └── TextRules.java            Rules for names and product codes
+    ├── exceptions/                   The errors the program can show
+    │   ├── StoreException.java       Base class for business-rule errors
+    │   ├── DuplicateRecordException.java
+    │   ├── InsufficientStockException.java
+    │   ├── InputCancelledException.java
+    │   └── EndOfInputException.java
+    └── utils/
+        └── Money.java                Peso amounts: format "PHP 1,250.50" and checks
+```
+
+## Where to look
+
+| When something happens with... | Look in |
+|----|----|
+| A menu option (what it asks, what it prints) | `src/Main.java`: one method per option, e.g. `recordCashSale()`, `restockProduct()` |
+| A typed number, amount, name or code being accepted or rejected | `validators/InputHelper.java` (numbers, money, Y/N, X) and `validators/TextRules.java` (names, codes) |
+| Stock, total sold or price | `models/Product.java` |
+| A customer's balance or history | `models/Customer.java`, plus `transactions/UtangTransaction.java` and `PaymentTransaction.java` |
+| Cash sales total | `models/CashRegister.java` and `transactions/CashSaleTransaction.java` |
+| Recording or undoing a sale, utang, payment or restock | `transactions/` (each type's `applyChanges()` and `reverseChanges()`) and `datastructures/UndoStack.java` |
+| Search results, sort order, low stock, best sellers | `algorithms/Algorithms.java`, and `datastructures/Inventory.java` / `CustomerRecords.java` for which algorithm each list uses |
+| An error message's wording | `exceptions/`, `validators/`, or the class that throws it |
+| Money formatting | `utils/Money.java` |
+| The sample products and customers | `Main.loadSampleData()` in `src/Main.java` |
 
 ## Menu options
 
@@ -61,11 +123,11 @@ again from the sample data.
 
 | Requirement | Where |
 |----|----|
-| Binary search | `Algorithms.binarySearch()`, used by `Inventory.findByName()` and `CustomerRecords.findByName()` |
-| Linear search | `Algorithms.linearSearch()` (`Inventory.findByCode()`) and `Algorithms.linearSearchAll()` (`searchPartial()`, low stock, customers with utang) |
-| Merge sort (stable) | `Algorithms.mergeSort()` and `Algorithms.sortedCopy()`: restoring A-Z order after adding, every display order, low stock, reports |
-| Stack (LIFO) | `UndoStack`, backed by `java.util.Stack<Transaction>`; used by option 10 |
-| ArrayList | Master lists in `Inventory` and `CustomerRecords`, and each customer's history |
+| Binary search | `algorithms/Algorithms.java`: `binarySearch()`, used by `Inventory.findByName()` and `CustomerRecords.findByName()` |
+| Linear search | `algorithms/Algorithms.java`: `linearSearch()` (`Inventory.findByCode()`) and `linearSearchAll()` (`searchPartial()`, low stock, customers with utang) |
+| Merge sort (stable) | `algorithms/Algorithms.java`: `mergeSort()` and `sortedCopy()`: restoring A-Z order after adding, every display order, low stock, reports |
+| Stack (LIFO) | `datastructures/UndoStack.java`, backed by `java.util.Stack<Transaction>`; used by option 10 |
+| ArrayList | `datastructures/Inventory.java` and `datastructures/CustomerRecords.java` (master lists), and each customer's history in `models/Customer.java` |
 
 The master product and customer lists are always kept in alphabetical
 order (required by binary search). Other orders are made on sorted copies.
@@ -76,7 +138,7 @@ order (required by binary search). Other orders are made on sorted copies.
 |----|----|
 | Encapsulation | All fields are `private`. `Product`, `Customer`, `CashRegister` and `UndoStack` only change through methods that check the rules first (no negative stock or balance, no overselling). Lists are returned as copies. |
 | Abstraction | `Transaction` is an abstract class; `Nameable` and `Algorithms.Condition` are interfaces that hide details from the search and sort code. |
-| Inheritance | `Transaction` → `ProductTransaction` → `CashSaleTransaction` / `UtangTransaction`; `Transaction` → `PaymentTransaction`; `Exception` → `StoreException` → `DuplicateRecordException` / `InsufficientStockException`. |
+| Inheritance | `Transaction` → `ProductTransaction` → `CashSaleTransaction` / `UtangTransaction`; `Transaction` → `PaymentTransaction` / `RestockTransaction`; `Exception` → `StoreException` → `DuplicateRecordException` / `InsufficientStockException`. |
 | Polymorphism | `undo()`, `getReceipt()`, `getBalanceEffect()` and `getDetails()` behave differently for each transaction type; one `catch (StoreException e)` handles all its subclasses; `Product` and `Customer` are both searched as `Nameable`; `toString()` is overridden. |
 
 ## Validation and exception handling
@@ -94,19 +156,3 @@ order (required by binary search). Other orders are made on sorted copies.
   failed or cancelled operation never changes stock, balances, history,
   totals, or the undo stack.
 - If the input ends (terminal closed), the program exits cleanly.
-
-## Files
-
-| File | Responsibility |
-|----|----|
-| `Main.java` | Startup, menus, workflows, sample data, printing |
-| `InputHelper.java` | Reads and validates all input (uses the one Scanner from Main) |
-| `Product.java`, `Customer.java` | Product and customer information |
-| `Inventory.java`, `CustomerRecords.java` | Storage, searching and sorted lists; product edit/remove methods (not on the menu) |
-| `Transaction.java`, `ProductTransaction.java`, `CashSaleTransaction.java`, `UtangTransaction.java`, `PaymentTransaction.java` | Transaction details, recording and undo |
-| `TransactionType.java` | Enum: cash sale, utang, payment |
-| `UndoStack.java` | The undo stack |
-| `Algorithms.java` | Binary search, linear search, merge sort |
-| `CashRegister.java` | Session cash-sales total |
-| `Money.java`, `TextRules.java`, `Nameable.java` | Small helpers: money, name/code rules, the shared name interface |
-| `StoreException.java`, `DuplicateRecordException.java`, `InsufficientStockException.java`, `InputCancelledException.java`, `EndOfInputException.java` | Exceptions |

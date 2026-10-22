@@ -1,4 +1,9 @@
+package sarisari.models;
+
 import java.math.BigDecimal;
+
+import sarisari.exceptions.StoreException;
+import sarisari.utils.Money;
 
 /**
  * Keeps the total of CASH SALES for the current session.
@@ -17,8 +22,8 @@ public class CashRegister {
         return cashSales;
     }
 
-    /** Adds the amount of a recorded cash sale. */
-    void addSale(BigDecimal amount) {
+    /** Adds the amount of a recorded cash sale. Called by CashSaleTransaction. */
+    public void addSale(BigDecimal amount) {
         if (!Money.isPositive(amount)) {
             throw new IllegalArgumentException("A cash sale amount must be greater than zero.");
         }
@@ -26,16 +31,16 @@ public class CashRegister {
     }
 
     /** True if this amount can be subtracted without going below zero. */
-    boolean canRemoveSale(BigDecimal amount) {
+    public boolean canRemoveSale(BigDecimal amount) {
         return Money.isPositive(amount) && amount.compareTo(cashSales) <= 0;
     }
 
     /**
-     * Subtracts the amount of an undone cash sale.
+     * Subtracts the amount of an undone cash sale. Called by CashSaleTransaction.
      *
      * @throws StoreException if the total would become negative
      */
-    void removeSale(BigDecimal amount) throws StoreException {
+    public void removeSale(BigDecimal amount) throws StoreException {
         if (!canRemoveSale(amount)) {
             throw new StoreException("Cannot subtract " + Money.format(amount)
                     + " from cash sales of " + Money.format(cashSales) + ".");

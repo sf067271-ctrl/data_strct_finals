@@ -1,3 +1,5 @@
+package sarisari.exceptions;
+
 /**
  * Thrown when a product code, product name, or customer name is already used.
  * (INHERITANCE: a more specific kind of StoreException.)

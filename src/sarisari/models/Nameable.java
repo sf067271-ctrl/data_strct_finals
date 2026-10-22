@@ -1,3 +1,5 @@
+package sarisari.models;
+
 /**
  * Anything that has a name: a Product or a Customer.
  *

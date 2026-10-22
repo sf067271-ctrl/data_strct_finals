@@ -1,5 +1,12 @@
+package sarisari.transactions;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+
+import sarisari.exceptions.InsufficientStockException;
+import sarisari.exceptions.StoreException;
+import sarisari.models.Product;
+import sarisari.utils.Money;
 
 /**
  * A transaction that sells ONE product in some quantity: the parent of

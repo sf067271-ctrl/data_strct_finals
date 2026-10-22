@@ -1,6 +1,11 @@
+package sarisari.transactions;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+
+import sarisari.exceptions.StoreException;
+import sarisari.utils.Money;
 
 /**
  * A completed (or about-to-be-completed) store transaction.

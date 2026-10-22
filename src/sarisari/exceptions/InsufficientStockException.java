@@ -1,3 +1,5 @@
+package sarisari.exceptions;
+
 /**
  * Thrown when a sale or utang asks for more pieces than are on the shelf.
  * (INHERITANCE: a more specific kind of StoreException.)

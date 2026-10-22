@@ -1,3 +1,5 @@
+package sarisari.transactions;
+
 /**
  * The kinds of transaction that can be recorded and undone.
  */

@@ -1,6 +1,11 @@
+package sarisari.algorithms;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+
+import sarisari.models.Nameable;
+import sarisari.validators.TextRules;
 
 /**
  * The searching and sorting algorithms of the system, written by hand.
