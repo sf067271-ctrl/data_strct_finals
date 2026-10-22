@@ -96,7 +96,7 @@ public class InputHelper {
 
     /**
      * Reads a whole number from min to max. Typing X cancels.
-     * Rejects letters, decimals, negative numbers and numbers too large for an int.
+     * Rejects letters, decimals, negative numbers, leading zeros and numbers too large for an int.
      */
     public int readWholeNumber(String prompt, int min, int max) {
         while (true) {
@@ -138,6 +138,10 @@ public class InputHelper {
         }
         if (!text.matches("\\d+")) {
             printError("\"" + text + "\" is not a number. Please type digits only.");
+            return null;
+        }
+        if (text.length() > 1 && text.startsWith("0")) {
+            printError("Leading zeros are not allowed. Enter the number without leading zeros.");
             return null;
         }
         int value;
