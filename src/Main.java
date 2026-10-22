@@ -122,7 +122,8 @@ public class Main {
                     recordUtangPayment();
                     break;
                 case 6:
-                    searchCustomer();
+                    viewCustomers();
+                    pauseAfter = false;
                     break;
                 case 7:
                     displayProductsSorted();   // has its own sub-menu loop
@@ -181,7 +182,7 @@ public class Main {
         System.out.println("   3. Record cash sale                9. Reports");
         System.out.println("   4. Record utang                   10. Undo last transaction");
         System.out.println("   5. Record utang payment           11. Exit");
-        System.out.println("   6. Search customer               12. Restock product");
+        System.out.println("   6. View Customers                12. Restock product");
         System.out.println(repeat('-', LINE_WIDTH));
         System.out.println("   Products: " + inventory.size()
                 + "   |   Customers: " + customerRecords.size()
@@ -425,13 +426,45 @@ public class Main {
     }
 
     // =====================================================================
-    //  6. Search customer
+    //  6. View customers (sub-menu)
     // =====================================================================
 
-    private void searchCustomer() {
-        printHeading("SEARCH CUSTOMER");
+    private void viewCustomers() {
+        while (true) {
+            printHeading("VIEW CUSTOMERS");
+            System.out.println("   1. View all customers");
+            System.out.println("   2. Search customers with debts");
+            System.out.println("   3. Back to main menu");
+            int choice = input.readMenuChoice("Choose an option (1-3): ", 1, 3);
+            if (choice == 3) {
+                return;
+            }
+
+            if (choice == 1) {
+                printHeading("ALL CUSTOMERS (A to Z)");
+                List<Customer> customers = customerRecords.getAllCustomers();
+                if (customers.isEmpty()) {
+                    printInfo("No records found. There are no customers yet.");
+                } else {
+                    for (Customer customer : customers) {
+                        printCustomerDetails(customer);
+                    }
+                }
+            } else {
+                searchCustomersWithDebts();
+            }
+            input.pause();
+        }
+    }
+
+    private void searchCustomersWithDebts() {
+        printHeading("SEARCH CUSTOMERS WITH DEBTS");
         if (customerRecords.isEmpty()) {
             printInfo("No records found. There are no customers yet.");
+            return;
+        }
+        if (customerRecords.getCustomersWithUtang().isEmpty()) {
+            printInfo("No customer has an outstanding utang right now.");
             return;
         }
         printCancelHint();
@@ -440,18 +473,27 @@ public class Main {
         // 1. Exact name: BINARY SEARCH
         Customer exact = customerRecords.findByName(keyword);
         if (exact != null) {
-            printInfo("Exact match found using binary search.");
-            printCustomerDetails(exact);
+            if (exact.hasOutstandingUtang()) {
+                printInfo("Exact match found using binary search.");
+                printCustomerDetails(exact);
+            } else {
+                printInfo(exact.getName() + " has no outstanding utang.");
+            }
             return;
         }
 
         // 2. Partial name: LINEAR SEARCH
-        List<Customer> partial = customerRecords.searchPartial(keyword);
+        List<Customer> partial = new java.util.ArrayList<Customer>();
+        for (Customer customer : customerRecords.searchPartial(keyword)) {
+            if (customer.hasOutstandingUtang()) {
+                partial.add(customer);
+            }
+        }
         if (partial.isEmpty()) {
-            printInfo("No records found for \"" + keyword + "\".");
+            printInfo("No customers with outstanding utang found for \"" + keyword + "\".");
             return;
         }
-        printInfo("No exact match. Customers whose names contain \"" + keyword
+        printInfo("No exact match. Customers with debts whose names contain \"" + keyword
                 + "\" (linear search): " + partial.size());
         for (Customer c : partial) {
             printCustomerDetails(c);
