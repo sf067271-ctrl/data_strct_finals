@@ -88,7 +88,7 @@ src/
 | 3 | Record cash sale | Sells one product for cash and prints a receipt. |
 | 4 | Record utang | Sells one product on credit. A new customer can be created on the spot. |
 | 5 | Record utang payment | Lowers a customer's balance. Overpayments are rejected. |
-| 6 | Search customer | Shows the name, balance and full history (ACTIVE or UNDONE entries). |
+| 6 | View Customers | Sub-menu to view all customers alphabetically or search customers with outstanding debts by exact or partial name. Shows names, balances and full histories (ACTIVE or UNDONE entries). |
 | 7 | Display products sorted | By name, price, stock, or best sellers, using merge sort. |
 | 8 | Low-stock alert | Products with 5 or fewer pieces (including 0), lowest stock first. |
 | 9 | Reports | Session cash sales, total outstanding utang, top 3 best sellers, customers with utang. |
