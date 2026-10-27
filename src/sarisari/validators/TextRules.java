@@ -16,7 +16,7 @@ public final class TextRules {
      */
     private static final String NAME_PATTERN = "[\\p{L}\\p{N} '’\\-.,&()/]+";
 
-    /** Letters, digits and hyphens only, e.g. "P001" or "SKU-12". */
+    /** Letters, digits and hyphens, with at least one letter or digit, e.g. "P001" or "SKU-12". */
     private static final String CODE_PATTERN = "[A-Za-z0-9\\-]+";
 
     private TextRules() {
@@ -74,6 +74,9 @@ public final class TextRules {
         }
         if (!cleaned.matches(CODE_PATTERN)) {
             return "The product code may only contain letters, numbers and hyphens (no spaces).";
+        }
+        if (!cleaned.matches(".*[A-Za-z0-9].*")) {
+            return "The product code must contain at least one letter or number.";
         }
         if (cleaned.equalsIgnoreCase(InputHelper.CANCEL_WORD)) {
             return "\"" + InputHelper.CANCEL_WORD + "\" is reserved for cancelling and cannot be used as a code.";

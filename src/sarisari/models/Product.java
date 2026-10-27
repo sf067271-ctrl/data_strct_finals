@@ -3,6 +3,7 @@ package sarisari.models;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+import sarisari.datastructures.Inventory;
 import sarisari.exceptions.InsufficientStockException;
 import sarisari.exceptions.StoreException;
 import sarisari.utils.Money;
@@ -149,10 +150,15 @@ public class Product implements Nameable {
     // =====================================================================
 
     /**
-     * Changes the name. Only Inventory.editProductName() should call this,
-     * because Inventory must also check uniqueness and re-sort its list.
+     * Changes the name with permission held only by Inventory. Use
+     * Inventory.editProductName() so uniqueness and sorting stay consistent.
+     *
+     * @throws IllegalArgumentException if permission is missing or the name is invalid
      */
-    public void setName(String newName) {
+    public final void setName(String newName, Inventory.NameChangeAccess access) {
+        if (access == null) {
+            throw new IllegalArgumentException("Use Inventory.editProductName() to change a product name.");
+        }
         this.name = requireValidName(newName);
     }
 

@@ -122,12 +122,12 @@ public class Main {
                     recordUtangPayment();
                     break;
                 case 6:
-                    viewCustomers();
                     pauseAfter = false;
+                    viewCustomers();
                     break;
                 case 7:
-                    displayProductsSorted();   // has its own sub-menu loop
                     pauseAfter = false;
+                    displayProductsSorted();   // has its own sub-menu loop
                     break;
                 case 8:
                     showLowStockAlert();
@@ -435,7 +435,8 @@ public class Main {
             System.out.println("   1. View all customers");
             System.out.println("   2. Search customers with debts");
             System.out.println("   3. Back to main menu");
-            int choice = input.readMenuChoice("Choose an option (1-3): ", 1, 3);
+            System.out.println("   " + InputHelper.CANCEL_WORD + ". Back to main menu");
+            int choice = input.readWholeNumber("Choose an option (1-3 or X): ", 1, 3);
             if (choice == 3) {
                 return;
             }
@@ -512,7 +513,8 @@ public class Main {
             System.out.println("   3. By stock quantity (lowest first)");
             System.out.println("   4. Best sellers (most sold first)");
             System.out.println("   5. Back to main menu");
-            int choice = input.readMenuChoice("Choose an order (1-5): ", 1, 5);
+            System.out.println("   " + InputHelper.CANCEL_WORD + ". Back to main menu");
+            int choice = input.readWholeNumber("Choose an order (1-5 or X): ", 1, 5);
             if (choice == 5) {
                 return;
             }
