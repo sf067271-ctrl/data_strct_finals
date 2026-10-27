@@ -93,10 +93,10 @@ src/
 | 8 | Low-stock alert | Products with 5 or fewer pieces (including 0), lowest stock first. |
 | 9 | Reports | Session cash sales, total outstanding utang, top 3 best sellers, customers with utang. |
 | 10 | Undo last transaction | Reverses the most recent cash sale, utang, payment or restock (stack, LIFO). |
-| 11 | Exit | Ends the program after a confirmation. |
-| 12 | Restock product | Adds the quantity received to an existing product's stock after confirmation. |
+| 11 | Restock product | Adds the quantity received to an existing product's stock after confirmation. |
+| 12 | Exit | Ends the program after a confirmation. |
 
-**Restocking:** choose option `12`, select a product by code or name, and enter
+**Restocking:** choose option `11`, select a product by code or name, and enter
 the number of pieces received. For example, Milo with 4 pieces plus a delivery
 of 20 becomes 24 pieces. Stock cannot exceed 1,000,000 pieces. Restocking does
 not change sales or customer balances and can be reversed with option `10`.

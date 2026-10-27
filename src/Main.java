@@ -139,13 +139,13 @@ public class Main {
                     undoLastTransaction();
                     break;
                 case 11:
+                    restockProduct();
+                    break;
+                case 12:
                     if (confirmExit()) {
                         return false;
                     }
                     pauseAfter = false;
-                    break;
-                case 12:
-                    restockProduct();
                     break;
                 default:
                     printError("Unknown menu option.");
@@ -181,8 +181,8 @@ public class Main {
         System.out.println("   2. Search product                  8. Low-stock alert");
         System.out.println("   3. Record cash sale                9. Reports");
         System.out.println("   4. Record utang                   10. Undo last transaction");
-        System.out.println("   5. Record utang payment           11. Exit");
-        System.out.println("   6. View Customers                12. Restock product");
+        System.out.println("   5. Record utang payment           11. Restock product");
+        System.out.println("   6. View Customers                12. Exit");
         System.out.println(repeat('-', LINE_WIDTH));
         System.out.println("   Products: " + inventory.size()
                 + "   |   Customers: " + customerRecords.size()
@@ -557,7 +557,7 @@ public class Main {
     }
 
     // =====================================================================
-    //  8. Low-stock alert
+    //  11. Restock product
     // =====================================================================
 
     private void restockProduct() throws StoreException {
@@ -587,6 +587,10 @@ public class Main {
         printSuccess("Restock recorded. " + product.getName() + " stock is now " + product.getStock() + ".");
         printLowStockWarning(product);
     }
+
+    // =====================================================================
+    //  8. Low-stock alert
+    // =====================================================================
 
     private void showLowStockAlert() {
         printHeading("LOW-STOCK ALERT (" + LOW_STOCK_LIMIT + " pieces or fewer)");
@@ -677,7 +681,7 @@ public class Main {
     }
 
     // =====================================================================
-    //  11. Exit
+    //  12. Exit
     // =====================================================================
 
     private boolean confirmExit() {
