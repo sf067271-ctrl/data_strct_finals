@@ -327,7 +327,16 @@ public class Main {
         }
         printCancelHint();
 
+        // PAY-FIRST RULE: a customer who still owes money must pay the full
+        // balance (option 5) before getting another utang. Keep asking until
+        // the chosen customer has no unpaid balance, or the user types X.
         Customer customer = selectOrCreateCustomer();
+        while (customer.hasOutstandingUtang()) {
+            printError(customer.getName() + " still owes " + Money.format(customer.getBalance())
+                    + ". Pay the full balance first (option 5) before getting another utang.");
+            printInfo("Enter another customer name, or type X to cancel.");
+            customer = selectOrCreateCustomer();
+        }
         boolean isNewCustomer = customerRecords.findByName(customer.getName()) == null;
         if (isNewCustomer) {
             System.out.println("Customer: " + customer.getName() + " (NEW - will be saved when the utang is recorded)");

@@ -34,6 +34,21 @@ public class UtangTransaction extends ProductTransaction {
         return customer;
     }
 
+    /**
+     * PAY-FIRST RULE: a customer who still owes money cannot get another
+     * utang until the WHOLE balance is paid. This is checked right before
+     * the utang is recorded, so the rule cannot be skipped.
+     * After that, the parent class (ProductTransaction) checks the stock.
+     */
+    @Override
+    protected void validate() throws StoreException {
+        if (customer.hasOutstandingUtang()) {
+            throw new StoreException(customer.getName() + " still owes " + Money.format(customer.getBalance())
+                    + ". Pay the full balance first (option 5) before getting another utang.");
+        }
+        super.validate();
+    }
+
     @Override
     protected void applyChanges() throws StoreException {
         getProduct().sell(getQuantity());
