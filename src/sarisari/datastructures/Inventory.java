@@ -23,6 +23,17 @@ import sarisari.validators.TextRules;
  */
 public class Inventory {
 
+    /**
+     * Permission to change a product name. Only Inventory can create it, so
+     * callers must use editProductName() for uniqueness checks and sorting.
+     */
+    public static final class NameChangeAccess {
+        private NameChangeAccess() {
+        }
+    }
+
+    private static final NameChangeAccess NAME_CHANGE_ACCESS = new NameChangeAccess();
+
     // ----- Sort orders (Comparators) used with merge sort -----
 
     /** Lowest price first. */
@@ -200,7 +211,7 @@ public class Inventory {
             throw new DuplicateRecordException("A product named \"" + sameName.getName() + "\" already exists.");
         }
         try {
-            product.setName(newName);
+            product.setName(newName, NAME_CHANGE_ACCESS);
         } catch (IllegalArgumentException e) {
             throw new StoreException(e.getMessage());
         }
